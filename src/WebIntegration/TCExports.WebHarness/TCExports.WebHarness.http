@@ -1,0 +1,6 @@
+@TCExports.WebHarness_HostAddress = http://localhost:5256
+
+GET {{TCExports.WebHarness_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
