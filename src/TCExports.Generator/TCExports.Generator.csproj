@@ -12,4 +12,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Data\" />
+    <Folder Include="Exports\" />
+    <Folder Include="python\exporters\" />
+  </ItemGroup>
+
 </Project>
