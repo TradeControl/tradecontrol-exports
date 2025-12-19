@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using TCExports.Generator; // shared models + runner
+using TCExports.Generator; // engine entry point
+using TCExports.Generator.Contracts;
 
 namespace TCExports.WebHarness.Controllers;
 
@@ -16,7 +17,20 @@ public class ExportController : ControllerBase
             return BadRequest(result);
 
         var bytes = Convert.FromBase64String(result.FileContent!);
-        var contentType = "text/csv"; // or derive from payload.FileType
+        var contentType = GetContentType(result.FileName);
         return File(bytes, contentType, result.FileName);
+    }
+
+    private static string GetContentType(string? fileName)
+    {
+        var ext = Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant();
+        return ext switch
+        {
+            ".csv" => "text/csv",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".ods" => "application/vnd.oasis.opendocument.spreadsheet",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream"
+        };
     }
 }

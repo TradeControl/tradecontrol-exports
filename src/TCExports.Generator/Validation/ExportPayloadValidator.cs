@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
+using TCExports.Generator.Contracts;
 
-namespace TCExports.Generator;
+namespace TCExports.Generator.Validation;
 
 public static class ExportPayloadValidator
 {

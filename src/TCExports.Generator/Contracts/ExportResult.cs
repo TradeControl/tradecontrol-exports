@@ -1,4 +1,4 @@
-﻿namespace TCExports.Generator;
+﻿namespace TCExports.Generator.Contracts;
 
 public class ExportResult
 {
