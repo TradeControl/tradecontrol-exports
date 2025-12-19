@@ -24,7 +24,7 @@ public sealed class ExportEngine : IExportEngine
         {
             Status = "error",
             Code = "UNSUPPORTED_COMBINATION",
-            Message = $"No handler for documentType='{payload.DocumentType}', fileType='{payload.FileType}', format='{payload.Format}'."
+            Message = $"No handler for documentType='{payload.DocumentType}', format='{payload.Format}'."
         };
     }
 }

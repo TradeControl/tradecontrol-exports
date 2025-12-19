@@ -1,4 +1,6 @@
-﻿namespace TCExports.Generator.Contracts;
+﻿using System.Text.Json.Serialization;
+
+namespace TCExports.Generator.Contracts;
 
 public class ExportPayload
 {
@@ -8,12 +10,13 @@ public class ExportPayload
     // Enumerated in validation: cashflow|budget|vat|generic
     public string DocumentType { get; set; } = string.Empty;
 
-    // Enumerated in validation: pdf|spreadsheet
-    public string FileType { get; set; } = "spreadsheet";
-
     // Enumerated in validation: libre|xls|csv
     public string Format { get; set; } = "libre";
 
     // Document-type-specific flags (validated per document type)
     public Dictionary<string, string> Params { get; set; } = new();
+
+    // Collects any unknown root-level properties present in the JSON
+    [JsonExtensionData]
+    public Dictionary<string, object>? Extra { get; set; }
 }

@@ -9,7 +9,7 @@ public static class ExportRunner
 {
     public static async Task<ExportResult> ExportDataAsync(ExportPayload payload)
     {
-        if (!ExportPayloadValidator.TryValidate(payload, out var errors))
+        if (!GenericPayloadValidator.TryValidate(payload, out var errors))
         {
             return new ExportResult
             {
@@ -21,8 +21,21 @@ public static class ExportRunner
         }
 
         var services = new ServiceCollection()
-            .AddSingleton<IDocumentHandler, TestCsvHandler>()
-            .AddSingleton<IDocumentHandler, TestExcelHandler>() // new
+
+            // format-specific handlers used internally by TestHandler
+            .AddSingleton<TestCsvHandler>()
+            .AddSingleton<TestExcelHandler>()
+            .AddSingleton<TestLibreHandler>()
+
+            // single meta handler for 'test'
+            .AddSingleton<IDocumentHandler, TestHandler>()
+
+            // document-specific validator(s)
+            .AddSingleton<IPayloadValidator, TestPayloadValidator>()
+
+            // single handler stub for future statements
+            .AddSingleton<IDocumentHandler, CashStatementHandler>()
+
             .AddSingleton<IExportEngine, ExportEngine>()
             .BuildServiceProvider();
 

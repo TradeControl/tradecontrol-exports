@@ -7,7 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Update="python\success_export.py">
+    <None Update="python\exporters\test_ods_export.py">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="python\exporters\test_csv_export.py">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
@@ -16,7 +19,6 @@
     <Folder Include="Data\" />
     <Folder Include="Exports\" />
     <Folder Include="Rendering\" />
-    <Folder Include="python\exporters\" />
   </ItemGroup>
 
   <ItemGroup>

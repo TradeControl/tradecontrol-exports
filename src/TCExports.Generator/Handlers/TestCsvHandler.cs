@@ -8,7 +8,6 @@ public sealed class TestCsvHandler : IDocumentHandler
 {
     public bool CanHandle(ExportPayload payload) =>
         payload.DocumentType.Equals("test", StringComparison.OrdinalIgnoreCase)
-        && payload.FileType.Equals("spreadsheet", StringComparison.OrdinalIgnoreCase)
         && payload.Format.Equals("csv", StringComparison.OrdinalIgnoreCase);
 
     public async Task<ExportResult> HandleAsync(ExportPayload payload, CancellationToken ct)
@@ -25,9 +24,9 @@ public sealed class TestCsvHandler : IDocumentHandler
         }
 
         var safeDoc = RegexSanitize(payload.DocumentType);
-        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
-        var fileName = $"{payload.UserName}_{safeDoc}_{timestamp}.csv";
-        var scriptPath = GetScriptPath(Path.Combine("python", "success_export.py"));
+        var ts = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+        var fileName = $"{payload.UserName}_{safeDoc}_{ts}.csv";
+        var scriptPath = GetScriptPath(Path.Combine("python", "exporters", "test_csv_export.py"));
 
         try
         {
@@ -48,17 +47,16 @@ public sealed class TestCsvHandler : IDocumentHandler
             psi.ArgumentList.Add("--filename");
             psi.ArgumentList.Add(fileName);
 
-            using var process = new Process { StartInfo = psi };
-            process.Start();
-
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            await Task.WhenAll(process.WaitForExitAsync(ct), stdoutTask, stderrTask);
+            using var proc = new Process { StartInfo = psi };
+            proc.Start();
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+            var stderrTask = proc.StandardError.ReadToEndAsync();
+            await Task.WhenAll(proc.WaitForExitAsync(ct), stdoutTask, stderrTask);
 
             var stdout = (await stdoutTask).Trim();
             var stderr = (await stderrTask).Trim();
 
-            if (process.ExitCode != 0)
+            if (proc.ExitCode != 0)
                 return new ExportResult { Status = "error", Code = "EXECUTION_ERROR", Message = stderr };
 
             var parts = stdout.Split('|', 2);
