@@ -1,5 +1,5 @@
-﻿<?xml version="1.0" encoding="utf-8"?><Database Name="tcNode" Class="dbTradeControlDataContext" xmlns="http://schemas.microsoft.com/linqtosql/dbml/2007">
-  <Connection Mode="AppSettings" ConnectionString="Data Source=IAM;Initial Catalog=tcNode;Integrated Security=True" SettingsObjectName="TradeControl.CashFlow.Properties.Settings" SettingsPropertyName="tcNodeConnectionString" Provider="System.Data.SqlClient" />
+﻿<?xml version="1.0" encoding="utf-8"?><Database Name="greenPrintWeb" Class="dbTradeControlDataContext" xmlns="http://schemas.microsoft.com/linqtosql/dbml/2007">
+  <Connection Mode="AppSettings" ConnectionString="Data Source=DESKTOP-4RQOF6O;Initial Catalog=greenPrintWeb;Integrated Security=True;Trust Server Certificate=True" SettingsObjectName="TradeControl.CashFlow.Properties.Settings" SettingsPropertyName="tcNodeConnectionString" Provider="System.Data.SqlClient" />
   <Table Name="App.vwActivePeriod" Member="vwActivePeriods">
     <Type Name="vwActivePeriod">
       <Column Name="YearNumber" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
@@ -24,70 +24,6 @@
       <Column Name="MonthNumber" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
     </Type>
   </Table>
-  <Table Name="Cash.vwCategoryTrade" Member="vwCategoryTrades">
-    <Type Name="vwCategoryTrade">
-      <Column Name="CategoryCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
-      <Column Name="Category" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="CategoryTypeCode" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="CashModeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-      <Column Name="CashTypeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-      <Column Name="DisplayOrder" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="IsEnabled" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="InsertedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="InsertedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="UpdatedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="UpdatedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="RowVer" Type="System.Data.Linq.Binary" DbType="rowversion NOT NULL" CanBeNull="false" IsVersion="true" />
-    </Type>
-  </Table>
-  <Table Name="Cash.vwCategoryBank" Member="vwCategoryBanks">
-    <Type Name="vwCategoryBank">
-      <Column Name="CategoryCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
-      <Column Name="Category" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="CategoryTypeCode" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="CashModeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-      <Column Name="CashTypeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-      <Column Name="DisplayOrder" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="IsEnabled" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="InsertedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="InsertedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="UpdatedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="UpdatedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="RowVer" Type="System.Data.Linq.Binary" DbType="rowversion NOT NULL" CanBeNull="false" IsVersion="true" />
-    </Type>
-  </Table>
-  <Table Name="Cash.vwCategoryTax" Member="vwCategoryTaxes">
-    <Type Name="vwCategoryTax">
-      <Column Name="CategoryCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
-      <Column Name="Category" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="CategoryTypeCode" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="CashModeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-      <Column Name="CashTypeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-      <Column Name="DisplayOrder" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="IsEnabled" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="InsertedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="InsertedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="UpdatedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="UpdatedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="RowVer" Type="System.Data.Linq.Binary" DbType="rowversion NOT NULL" CanBeNull="false" IsVersion="true" />
-    </Type>
-  </Table>
-  <Table Name="Cash.vwCategoryTotals" Member="vwCategoryTotals">
-    <Type Name="vwCategoryTotal">
-      <Column Name="CategoryCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
-      <Column Name="Category" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="CategoryTypeCode" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="CashModeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-      <Column Name="CashTypeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-      <Column Name="DisplayOrder" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="IsEnabled" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="InsertedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="InsertedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="UpdatedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="UpdatedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="RowVer" Type="System.Data.Linq.Binary" DbType="rowversion NOT NULL" CanBeNull="false" IsVersion="true" />
-    </Type>
-  </Table>
   <Table Name="Cash.vwCategoryExpressions" Member="vwCategoryExpressions">
     <Type Name="vwCategoryExpression">
       <Column Name="DisplayOrder" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
@@ -95,12 +31,6 @@
       <Column Name="Category" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
       <Column Name="Expression" Type="System.String" DbType="NVarChar(256) NOT NULL" CanBeNull="false" />
       <Column Name="Format" Type="System.String" DbType="NVarChar(100) NOT NULL" CanBeNull="false" />
-    </Type>
-  </Table>
-  <Table Name="App.vwHomeAccount" Member="vwHomeAccounts">
-    <Type Name="vwHomeAccount">
-      <Column Name="AccountCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
-      <Column Name="AccountName" Type="System.String" DbType="NVarChar(255) NOT NULL" CanBeNull="false" />
     </Type>
   </Table>
   <Table Name="Cash.vwFlowTaxType" Member="vwFlowTaxTypes">
@@ -115,14 +45,6 @@
       <Column Name="MonthName" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
       <Column Name="AccountCode" Type="System.String" DbType="NVarChar(10)" CanBeNull="true" />
       <Column Name="OffsetDays" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-    </Type>
-  </Table>
-  <Table Name="Cash.vwBankAccounts" Member="vwBankAccounts">
-    <Type Name="vwBankAccount">
-      <Column Name="CashAccountCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
-      <Column Name="CashAccountName" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="OpeningBalance" Type="System.Decimal" DbType="Decimal(18,5) NOT NULL" CanBeNull="false" />
-      <Column Name="DisplayOrder" Type="System.Int32" DbType="Int NOT NULL" CanBeNull="false" />
     </Type>
   </Table>
   <Table Name="Cash.vwFlowVatRecurrence" Member="vwFlowVatRecurrences">
@@ -186,16 +108,64 @@
       <Column Name="VatDue" Type="System.Decimal" DbType="Decimal(18,5) NOT NULL" CanBeNull="false" />
     </Type>
   </Table>
+  <Table Name="App.vwHomeAccount" Member="vwHomeAccounts">
+    <Type Name="vwHomeAccount">
+      <Column Name="SubjectCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
+      <Column Name="SubjectName" Type="System.String" DbType="NVarChar(255) NOT NULL" CanBeNull="false" />
+    </Type>
+  </Table>
+  <Table Name="Cash.vwCategoryTrade" Member="vwCategoryTrades">
+    <Type Name="vwCategoryTrade">
+      <Column Name="CategoryCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
+      <Column Name="Category" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
+      <Column Name="CategoryTypeCode" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="CashPolarityCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
+      <Column Name="CashTypeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
+      <Column Name="DisplayOrder" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="IsEnabled" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="InsertedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
+      <Column Name="InsertedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
+      <Column Name="UpdatedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
+      <Column Name="UpdatedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
+      <Column Name="RowVer" Type="System.Data.Linq.Binary" DbType="rowversion NOT NULL" CanBeNull="false" IsVersion="true" />
+    </Type>
+  </Table>
+  <Table Name="Cash.vwCategoryTotals" Member="vwCategoryTotals">
+    <Type Name="vwCategoryTotal">
+      <Column Name="CategoryCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
+      <Column Name="Category" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
+      <Column Name="CategoryTypeCode" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="CashPolarityCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
+      <Column Name="CashTypeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
+      <Column Name="DisplayOrder" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="IsEnabled" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="InsertedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
+      <Column Name="InsertedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
+      <Column Name="UpdatedBy" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
+      <Column Name="UpdatedOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
+      <Column Name="RowVer" Type="System.Data.Linq.Binary" DbType="rowversion NOT NULL" CanBeNull="false" IsVersion="true" />
+    </Type>
+  </Table>
   <Table Name="Cash.vwBalanceSheet" Member="vwBalanceSheets">
     <Type Name="vwBalanceSheet">
       <Column Name="EntryNumber" Type="System.Int64" DbType="BigInt" CanBeNull="true" />
-      <Column Name="AssetCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
-      <Column Name="AssetName" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
-      <Column Name="CashModeCode" Type="System.Int32" DbType="Int" CanBeNull="true" />
-      <Column Name="LiquidityLevel" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="AssetCode" Type="System.String" DbType="NVarChar(10)" CanBeNull="true" />
+      <Column Name="AssetName" Type="System.String" DbType="NVarChar(50)" CanBeNull="true" />
+      <Column Name="CashPolarityCode" Type="System.Int32" DbType="Int" CanBeNull="true" />
+      <Column Name="LiquidityLevel" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
       <Column Name="StartOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="Balance" Type="System.Double" DbType="Float" CanBeNull="true" />
+      <Column Name="YearNumber" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="MonthNumber" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
       <Column Name="IsEntry" Type="System.Boolean" DbType="Bit" CanBeNull="true" />
+      <Column Name="Balance" Type="System.Double" DbType="Float" CanBeNull="true" />
+    </Type>
+  </Table>
+  <Table Name="Cash.vwBankAccounts" Member="vwBankAccounts">
+    <Type Name="vwBankAccount">
+      <Column Name="AccountCode" Type="System.String" DbType="NVarChar(10) NOT NULL" CanBeNull="false" />
+      <Column Name="AccountName" Type="System.String" DbType="NVarChar(50) NOT NULL" CanBeNull="false" />
+      <Column Name="OpeningBalance" Type="System.Decimal" DbType="Decimal(18,5) NOT NULL" CanBeNull="false" />
+      <Column Name="DisplayOrder" Type="System.Int32" DbType="Int NOT NULL" CanBeNull="false" />
     </Type>
   </Table>
   <Function Name="App.proc_EventLog" Method="proc_EventLog">
@@ -246,22 +216,22 @@
     <Parameter Name="CategoryCode" Parameter="categoryCode" Type="System.String" DbType="NVarChar(10)" Direction="InOut" />
     <Return Type="System.Int32" />
   </Function>
+  <Function Name="Cash.fnFlowBankBalances" Method="fnFlowBankBalances" IsComposable="true">
+    <Parameter Name="AccountCode" Parameter="accountCode" Type="System.String" DbType="NVarChar(10)" />
+    <ElementType Name="fnFlowBankBalancesResult">
+      <Column Name="AccountCode" Type="System.String" DbType="NVarChar(10)" CanBeNull="true" />
+      <Column Name="YearNumber" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
+      <Column Name="StartOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
+      <Column Name="Balance" Type="System.Double" DbType="Float" CanBeNull="true" />
+    </ElementType>
+  </Function>
   <Function Name="Cash.fnFlowCategory" Method="fnFlowCategory" IsComposable="true">
     <Parameter Name="CashTypeCode" Parameter="cashTypeCode" Type="System.Int16" DbType="SmallInt" />
     <ElementType Name="fnFlowCategoryResult">
       <Column Name="CategoryCode" Type="System.String" DbType="NVarChar(10)" CanBeNull="true" />
       <Column Name="Category" Type="System.String" DbType="NVarChar(50)" CanBeNull="true" />
-      <Column Name="CashModeCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
+      <Column Name="CashPolarityCode" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
       <Column Name="DisplayOrder" Type="System.Int16" DbType="SmallInt" CanBeNull="true" />
-    </ElementType>
-  </Function>
-  <Function Name="Cash.fnFlowBankBalances" Method="fnFlowBankBalances" IsComposable="true">
-    <Parameter Name="CashAccountCode" Parameter="cashAccountCode" Type="System.String" DbType="NVarChar(10)" />
-    <ElementType Name="fnFlowBankBalancesResult">
-      <Column Name="CashAccountCode" Type="System.String" DbType="NVarChar(10)" CanBeNull="true" />
-      <Column Name="YearNumber" Type="System.Int16" DbType="SmallInt NOT NULL" CanBeNull="false" />
-      <Column Name="StartOn" Type="System.DateTime" DbType="DateTime NOT NULL" CanBeNull="false" />
-      <Column Name="Balance" Type="System.Double" DbType="Float" CanBeNull="true" />
     </ElementType>
   </Function>
 </Database>

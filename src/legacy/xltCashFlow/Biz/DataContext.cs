@@ -12,7 +12,7 @@ namespace TradeControl.CashFlow
     public enum EventLogType { Error, Warning, Information };
     public enum CashType { Trade, Tax, Money };
     public enum ReportMode { CashFlow, Budget };
-    public enum CashMode { Expense, Income, Neutral };    
+    public enum CashPolarity { Expense, Income, Neutral };    
     public enum CategoryType { CashCode, Total, Expression };
     public enum TaxType { CorporationTax, Vat, NI, General };
 
@@ -72,7 +72,7 @@ namespace TradeControl.CashFlow
         {
             get
             {
-                return db.vwHomeAccounts.Select(f => f).First().AccountName;
+                return db.vwHomeAccounts.Select(f => f).First().SubjectName;
             }
         }
 
@@ -166,14 +166,14 @@ namespace TradeControl.CashFlow
             get
             {
                 return from r in db.vwBankAccounts
-                       orderby r.DisplayOrder, r.CashAccountCode
+                       orderby r.DisplayOrder, r.AccountCode
                        select r;
             }
         }
 
-        public IOrderedQueryable<Data.fnFlowBankBalancesResult> BankBalances(string cashAccountCode)
+        public IOrderedQueryable<Data.fnFlowBankBalancesResult> BankBalances(string accountCode)
         {
-            return from r in db.fnFlowBankBalances(cashAccountCode)
+            return from r in db.fnFlowBankBalances(accountCode)
                    orderby r.YearNumber, r.StartOn
                    select r;
         }

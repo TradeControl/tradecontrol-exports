@@ -22,7 +22,7 @@ namespace TradeControl.CashFlow.Data
 	using System;
 	
 	
-	[global::System.Data.Linq.Mapping.DatabaseAttribute(Name="tcNode")]
+	[global::System.Data.Linq.Mapping.DatabaseAttribute(Name="greenPrintWeb")]
 	public partial class dbTradeControlDataContext : System.Data.Linq.DataContext
 	{
 		
@@ -86,38 +86,6 @@ namespace TradeControl.CashFlow.Data
 			}
 		}
 		
-		public System.Data.Linq.Table<vwCategoryTrade> vwCategoryTrades
-		{
-			get
-			{
-				return this.GetTable<vwCategoryTrade>();
-			}
-		}
-		
-		public System.Data.Linq.Table<vwCategoryBank> vwCategoryBanks
-		{
-			get
-			{
-				return this.GetTable<vwCategoryBank>();
-			}
-		}
-		
-		public System.Data.Linq.Table<vwCategoryTax> vwCategoryTaxes
-		{
-			get
-			{
-				return this.GetTable<vwCategoryTax>();
-			}
-		}
-		
-		public System.Data.Linq.Table<vwCategoryTotal> vwCategoryTotals
-		{
-			get
-			{
-				return this.GetTable<vwCategoryTotal>();
-			}
-		}
-		
 		public System.Data.Linq.Table<vwCategoryExpression> vwCategoryExpressions
 		{
 			get
@@ -126,27 +94,11 @@ namespace TradeControl.CashFlow.Data
 			}
 		}
 		
-		public System.Data.Linq.Table<vwHomeAccount> vwHomeAccounts
-		{
-			get
-			{
-				return this.GetTable<vwHomeAccount>();
-			}
-		}
-		
 		public System.Data.Linq.Table<vwFlowTaxType> vwFlowTaxTypes
 		{
 			get
 			{
 				return this.GetTable<vwFlowTaxType>();
-			}
-		}
-		
-		public System.Data.Linq.Table<vwBankAccount> vwBankAccounts
-		{
-			get
-			{
-				return this.GetTable<vwBankAccount>();
 			}
 		}
 		
@@ -182,11 +134,43 @@ namespace TradeControl.CashFlow.Data
 			}
 		}
 		
+		public System.Data.Linq.Table<vwHomeAccount> vwHomeAccounts
+		{
+			get
+			{
+				return this.GetTable<vwHomeAccount>();
+			}
+		}
+		
+		public System.Data.Linq.Table<vwCategoryTrade> vwCategoryTrades
+		{
+			get
+			{
+				return this.GetTable<vwCategoryTrade>();
+			}
+		}
+		
+		public System.Data.Linq.Table<vwCategoryTotal> vwCategoryTotals
+		{
+			get
+			{
+				return this.GetTable<vwCategoryTotal>();
+			}
+		}
+		
 		public System.Data.Linq.Table<vwBalanceSheet> vwBalanceSheets
 		{
 			get
 			{
 				return this.GetTable<vwBalanceSheet>();
+			}
+		}
+		
+		public System.Data.Linq.Table<vwBankAccount> vwBankAccounts
+		{
+			get
+			{
+				return this.GetTable<vwBankAccount>();
 			}
 		}
 		
@@ -231,16 +215,16 @@ namespace TradeControl.CashFlow.Data
 			return ((int)(result.ReturnValue));
 		}
 		
+		[global::System.Data.Linq.Mapping.FunctionAttribute(Name="Cash.fnFlowBankBalances", IsComposable=true)]
+		public IQueryable<fnFlowBankBalancesResult> fnFlowBankBalances([global::System.Data.Linq.Mapping.ParameterAttribute(Name="AccountCode", DbType="NVarChar(10)")] string accountCode)
+		{
+			return this.CreateMethodCallQuery<fnFlowBankBalancesResult>(this, ((MethodInfo)(MethodInfo.GetCurrentMethod())), accountCode);
+		}
+		
 		[global::System.Data.Linq.Mapping.FunctionAttribute(Name="Cash.fnFlowCategory", IsComposable=true)]
 		public IQueryable<fnFlowCategoryResult> fnFlowCategory([global::System.Data.Linq.Mapping.ParameterAttribute(Name="CashTypeCode", DbType="SmallInt")] System.Nullable<short> cashTypeCode)
 		{
 			return this.CreateMethodCallQuery<fnFlowCategoryResult>(this, ((MethodInfo)(MethodInfo.GetCurrentMethod())), cashTypeCode);
-		}
-		
-		[global::System.Data.Linq.Mapping.FunctionAttribute(Name="Cash.fnFlowBankBalances", IsComposable=true)]
-		public IQueryable<fnFlowBankBalancesResult> fnFlowBankBalances([global::System.Data.Linq.Mapping.ParameterAttribute(Name="CashAccountCode", DbType="NVarChar(10)")] string cashAccountCode)
-		{
-			return this.CreateMethodCallQuery<fnFlowBankBalancesResult>(this, ((MethodInfo)(MethodInfo.GetCurrentMethod())), cashAccountCode);
 		}
 	}
 	
@@ -487,906 +471,6 @@ namespace TradeControl.CashFlow.Data
 		}
 	}
 	
-	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwCategoryTrade")]
-	public partial class vwCategoryTrade
-	{
-		
-		private string _CategoryCode;
-		
-		private string _Category;
-		
-		private short _CategoryTypeCode;
-		
-		private System.Nullable<short> _CashModeCode;
-		
-		private System.Nullable<short> _CashTypeCode;
-		
-		private short _DisplayOrder;
-		
-		private short _IsEnabled;
-		
-		private string _InsertedBy;
-		
-		private System.DateTime _InsertedOn;
-		
-		private string _UpdatedBy;
-		
-		private System.DateTime _UpdatedOn;
-		
-		private System.Data.Linq.Binary _RowVer;
-		
-		public vwCategoryTrade()
-		{
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string CategoryCode
-		{
-			get
-			{
-				return this._CategoryCode;
-			}
-			set
-			{
-				if ((this._CategoryCode != value))
-				{
-					this._CategoryCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Category", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string Category
-		{
-			get
-			{
-				return this._Category;
-			}
-			set
-			{
-				if ((this._Category != value))
-				{
-					this._Category = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryTypeCode", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short CategoryTypeCode
-		{
-			get
-			{
-				return this._CategoryTypeCode;
-			}
-			set
-			{
-				if ((this._CategoryTypeCode != value))
-				{
-					this._CategoryTypeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashModeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
-		public System.Nullable<short> CashModeCode
-		{
-			get
-			{
-				return this._CashModeCode;
-			}
-			set
-			{
-				if ((this._CashModeCode != value))
-				{
-					this._CashModeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashTypeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
-		public System.Nullable<short> CashTypeCode
-		{
-			get
-			{
-				return this._CashTypeCode;
-			}
-			set
-			{
-				if ((this._CashTypeCode != value))
-				{
-					this._CashTypeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short DisplayOrder
-		{
-			get
-			{
-				return this._DisplayOrder;
-			}
-			set
-			{
-				if ((this._DisplayOrder != value))
-				{
-					this._DisplayOrder = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_IsEnabled", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short IsEnabled
-		{
-			get
-			{
-				return this._IsEnabled;
-			}
-			set
-			{
-				if ((this._IsEnabled != value))
-				{
-					this._IsEnabled = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string InsertedBy
-		{
-			get
-			{
-				return this._InsertedBy;
-			}
-			set
-			{
-				if ((this._InsertedBy != value))
-				{
-					this._InsertedBy = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public System.DateTime InsertedOn
-		{
-			get
-			{
-				return this._InsertedOn;
-			}
-			set
-			{
-				if ((this._InsertedOn != value))
-				{
-					this._InsertedOn = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string UpdatedBy
-		{
-			get
-			{
-				return this._UpdatedBy;
-			}
-			set
-			{
-				if ((this._UpdatedBy != value))
-				{
-					this._UpdatedBy = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public System.DateTime UpdatedOn
-		{
-			get
-			{
-				return this._UpdatedOn;
-			}
-			set
-			{
-				if ((this._UpdatedOn != value))
-				{
-					this._UpdatedOn = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_RowVer", AutoSync=AutoSync.Always, DbType="rowversion NOT NULL", CanBeNull=false, IsDbGenerated=true, IsVersion=true, UpdateCheck=UpdateCheck.Never)]
-		public System.Data.Linq.Binary RowVer
-		{
-			get
-			{
-				return this._RowVer;
-			}
-			set
-			{
-				if ((this._RowVer != value))
-				{
-					this._RowVer = value;
-				}
-			}
-		}
-	}
-	
-	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwCategoryBank")]
-	public partial class vwCategoryBank
-	{
-		
-		private string _CategoryCode;
-		
-		private string _Category;
-		
-		private short _CategoryTypeCode;
-		
-		private System.Nullable<short> _CashModeCode;
-		
-		private System.Nullable<short> _CashTypeCode;
-		
-		private short _DisplayOrder;
-		
-		private short _IsEnabled;
-		
-		private string _InsertedBy;
-		
-		private System.DateTime _InsertedOn;
-		
-		private string _UpdatedBy;
-		
-		private System.DateTime _UpdatedOn;
-		
-		private System.Data.Linq.Binary _RowVer;
-		
-		public vwCategoryBank()
-		{
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string CategoryCode
-		{
-			get
-			{
-				return this._CategoryCode;
-			}
-			set
-			{
-				if ((this._CategoryCode != value))
-				{
-					this._CategoryCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Category", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string Category
-		{
-			get
-			{
-				return this._Category;
-			}
-			set
-			{
-				if ((this._Category != value))
-				{
-					this._Category = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryTypeCode", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short CategoryTypeCode
-		{
-			get
-			{
-				return this._CategoryTypeCode;
-			}
-			set
-			{
-				if ((this._CategoryTypeCode != value))
-				{
-					this._CategoryTypeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashModeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
-		public System.Nullable<short> CashModeCode
-		{
-			get
-			{
-				return this._CashModeCode;
-			}
-			set
-			{
-				if ((this._CashModeCode != value))
-				{
-					this._CashModeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashTypeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
-		public System.Nullable<short> CashTypeCode
-		{
-			get
-			{
-				return this._CashTypeCode;
-			}
-			set
-			{
-				if ((this._CashTypeCode != value))
-				{
-					this._CashTypeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short DisplayOrder
-		{
-			get
-			{
-				return this._DisplayOrder;
-			}
-			set
-			{
-				if ((this._DisplayOrder != value))
-				{
-					this._DisplayOrder = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_IsEnabled", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short IsEnabled
-		{
-			get
-			{
-				return this._IsEnabled;
-			}
-			set
-			{
-				if ((this._IsEnabled != value))
-				{
-					this._IsEnabled = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string InsertedBy
-		{
-			get
-			{
-				return this._InsertedBy;
-			}
-			set
-			{
-				if ((this._InsertedBy != value))
-				{
-					this._InsertedBy = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public System.DateTime InsertedOn
-		{
-			get
-			{
-				return this._InsertedOn;
-			}
-			set
-			{
-				if ((this._InsertedOn != value))
-				{
-					this._InsertedOn = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string UpdatedBy
-		{
-			get
-			{
-				return this._UpdatedBy;
-			}
-			set
-			{
-				if ((this._UpdatedBy != value))
-				{
-					this._UpdatedBy = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public System.DateTime UpdatedOn
-		{
-			get
-			{
-				return this._UpdatedOn;
-			}
-			set
-			{
-				if ((this._UpdatedOn != value))
-				{
-					this._UpdatedOn = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_RowVer", AutoSync=AutoSync.Always, DbType="rowversion NOT NULL", CanBeNull=false, IsDbGenerated=true, IsVersion=true, UpdateCheck=UpdateCheck.Never)]
-		public System.Data.Linq.Binary RowVer
-		{
-			get
-			{
-				return this._RowVer;
-			}
-			set
-			{
-				if ((this._RowVer != value))
-				{
-					this._RowVer = value;
-				}
-			}
-		}
-	}
-	
-	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwCategoryTax")]
-	public partial class vwCategoryTax
-	{
-		
-		private string _CategoryCode;
-		
-		private string _Category;
-		
-		private short _CategoryTypeCode;
-		
-		private System.Nullable<short> _CashModeCode;
-		
-		private System.Nullable<short> _CashTypeCode;
-		
-		private short _DisplayOrder;
-		
-		private short _IsEnabled;
-		
-		private string _InsertedBy;
-		
-		private System.DateTime _InsertedOn;
-		
-		private string _UpdatedBy;
-		
-		private System.DateTime _UpdatedOn;
-		
-		private System.Data.Linq.Binary _RowVer;
-		
-		public vwCategoryTax()
-		{
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string CategoryCode
-		{
-			get
-			{
-				return this._CategoryCode;
-			}
-			set
-			{
-				if ((this._CategoryCode != value))
-				{
-					this._CategoryCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Category", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string Category
-		{
-			get
-			{
-				return this._Category;
-			}
-			set
-			{
-				if ((this._Category != value))
-				{
-					this._Category = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryTypeCode", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short CategoryTypeCode
-		{
-			get
-			{
-				return this._CategoryTypeCode;
-			}
-			set
-			{
-				if ((this._CategoryTypeCode != value))
-				{
-					this._CategoryTypeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashModeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
-		public System.Nullable<short> CashModeCode
-		{
-			get
-			{
-				return this._CashModeCode;
-			}
-			set
-			{
-				if ((this._CashModeCode != value))
-				{
-					this._CashModeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashTypeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
-		public System.Nullable<short> CashTypeCode
-		{
-			get
-			{
-				return this._CashTypeCode;
-			}
-			set
-			{
-				if ((this._CashTypeCode != value))
-				{
-					this._CashTypeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short DisplayOrder
-		{
-			get
-			{
-				return this._DisplayOrder;
-			}
-			set
-			{
-				if ((this._DisplayOrder != value))
-				{
-					this._DisplayOrder = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_IsEnabled", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short IsEnabled
-		{
-			get
-			{
-				return this._IsEnabled;
-			}
-			set
-			{
-				if ((this._IsEnabled != value))
-				{
-					this._IsEnabled = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string InsertedBy
-		{
-			get
-			{
-				return this._InsertedBy;
-			}
-			set
-			{
-				if ((this._InsertedBy != value))
-				{
-					this._InsertedBy = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public System.DateTime InsertedOn
-		{
-			get
-			{
-				return this._InsertedOn;
-			}
-			set
-			{
-				if ((this._InsertedOn != value))
-				{
-					this._InsertedOn = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string UpdatedBy
-		{
-			get
-			{
-				return this._UpdatedBy;
-			}
-			set
-			{
-				if ((this._UpdatedBy != value))
-				{
-					this._UpdatedBy = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public System.DateTime UpdatedOn
-		{
-			get
-			{
-				return this._UpdatedOn;
-			}
-			set
-			{
-				if ((this._UpdatedOn != value))
-				{
-					this._UpdatedOn = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_RowVer", AutoSync=AutoSync.Always, DbType="rowversion NOT NULL", CanBeNull=false, IsDbGenerated=true, IsVersion=true, UpdateCheck=UpdateCheck.Never)]
-		public System.Data.Linq.Binary RowVer
-		{
-			get
-			{
-				return this._RowVer;
-			}
-			set
-			{
-				if ((this._RowVer != value))
-				{
-					this._RowVer = value;
-				}
-			}
-		}
-	}
-	
-	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwCategoryTotals")]
-	public partial class vwCategoryTotal
-	{
-		
-		private string _CategoryCode;
-		
-		private string _Category;
-		
-		private short _CategoryTypeCode;
-		
-		private System.Nullable<short> _CashModeCode;
-		
-		private System.Nullable<short> _CashTypeCode;
-		
-		private short _DisplayOrder;
-		
-		private short _IsEnabled;
-		
-		private string _InsertedBy;
-		
-		private System.DateTime _InsertedOn;
-		
-		private string _UpdatedBy;
-		
-		private System.DateTime _UpdatedOn;
-		
-		private System.Data.Linq.Binary _RowVer;
-		
-		public vwCategoryTotal()
-		{
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string CategoryCode
-		{
-			get
-			{
-				return this._CategoryCode;
-			}
-			set
-			{
-				if ((this._CategoryCode != value))
-				{
-					this._CategoryCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Category", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string Category
-		{
-			get
-			{
-				return this._Category;
-			}
-			set
-			{
-				if ((this._Category != value))
-				{
-					this._Category = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryTypeCode", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short CategoryTypeCode
-		{
-			get
-			{
-				return this._CategoryTypeCode;
-			}
-			set
-			{
-				if ((this._CategoryTypeCode != value))
-				{
-					this._CategoryTypeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashModeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
-		public System.Nullable<short> CashModeCode
-		{
-			get
-			{
-				return this._CashModeCode;
-			}
-			set
-			{
-				if ((this._CashModeCode != value))
-				{
-					this._CashModeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashTypeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
-		public System.Nullable<short> CashTypeCode
-		{
-			get
-			{
-				return this._CashTypeCode;
-			}
-			set
-			{
-				if ((this._CashTypeCode != value))
-				{
-					this._CashTypeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short DisplayOrder
-		{
-			get
-			{
-				return this._DisplayOrder;
-			}
-			set
-			{
-				if ((this._DisplayOrder != value))
-				{
-					this._DisplayOrder = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_IsEnabled", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public short IsEnabled
-		{
-			get
-			{
-				return this._IsEnabled;
-			}
-			set
-			{
-				if ((this._IsEnabled != value))
-				{
-					this._IsEnabled = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string InsertedBy
-		{
-			get
-			{
-				return this._InsertedBy;
-			}
-			set
-			{
-				if ((this._InsertedBy != value))
-				{
-					this._InsertedBy = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public System.DateTime InsertedOn
-		{
-			get
-			{
-				return this._InsertedOn;
-			}
-			set
-			{
-				if ((this._InsertedOn != value))
-				{
-					this._InsertedOn = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
-		public string UpdatedBy
-		{
-			get
-			{
-				return this._UpdatedBy;
-			}
-			set
-			{
-				if ((this._UpdatedBy != value))
-				{
-					this._UpdatedBy = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
-		public System.DateTime UpdatedOn
-		{
-			get
-			{
-				return this._UpdatedOn;
-			}
-			set
-			{
-				if ((this._UpdatedOn != value))
-				{
-					this._UpdatedOn = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_RowVer", AutoSync=AutoSync.Always, DbType="rowversion NOT NULL", CanBeNull=false, IsDbGenerated=true, IsVersion=true, UpdateCheck=UpdateCheck.Never)]
-		public System.Data.Linq.Binary RowVer
-		{
-			get
-			{
-				return this._RowVer;
-			}
-			set
-			{
-				if ((this._RowVer != value))
-				{
-					this._RowVer = value;
-				}
-			}
-		}
-	}
-	
 	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwCategoryExpressions")]
 	public partial class vwCategoryExpression
 	{
@@ -1481,51 +565,6 @@ namespace TradeControl.CashFlow.Data
 				if ((this._Format != value))
 				{
 					this._Format = value;
-				}
-			}
-		}
-	}
-	
-	[global::System.Data.Linq.Mapping.TableAttribute(Name="App.vwHomeAccount")]
-	public partial class vwHomeAccount
-	{
-		
-		private string _AccountCode;
-		
-		private string _AccountName;
-		
-		public vwHomeAccount()
-		{
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AccountCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false)]
-		public string AccountCode
-		{
-			get
-			{
-				return this._AccountCode;
-			}
-			set
-			{
-				if ((this._AccountCode != value))
-				{
-					this._AccountCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AccountName", DbType="NVarChar(255) NOT NULL", CanBeNull=false)]
-		public string AccountName
-		{
-			get
-			{
-				return this._AccountName;
-			}
-			set
-			{
-				if ((this._AccountName != value))
-				{
-					this._AccountName = value;
 				}
 			}
 		}
@@ -1715,87 +754,6 @@ namespace TradeControl.CashFlow.Data
 				if ((this._OffsetDays != value))
 				{
 					this._OffsetDays = value;
-				}
-			}
-		}
-	}
-	
-	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwBankAccounts")]
-	public partial class vwBankAccount
-	{
-		
-		private string _CashAccountCode;
-		
-		private string _CashAccountName;
-		
-		private decimal _OpeningBalance;
-		
-		private int _DisplayOrder;
-		
-		public vwBankAccount()
-		{
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashAccountCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false)]
-		public string CashAccountCode
-		{
-			get
-			{
-				return this._CashAccountCode;
-			}
-			set
-			{
-				if ((this._CashAccountCode != value))
-				{
-					this._CashAccountCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashAccountName", DbType="NVarChar(50) NOT NULL", CanBeNull=false)]
-		public string CashAccountName
-		{
-			get
-			{
-				return this._CashAccountName;
-			}
-			set
-			{
-				if ((this._CashAccountName != value))
-				{
-					this._CashAccountName = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_OpeningBalance", DbType="Decimal(18,5) NOT NULL")]
-		public decimal OpeningBalance
-		{
-			get
-			{
-				return this._OpeningBalance;
-			}
-			set
-			{
-				if ((this._OpeningBalance != value))
-				{
-					this._OpeningBalance = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="Int NOT NULL")]
-		public int DisplayOrder
-		{
-			get
-			{
-				return this._DisplayOrder;
-			}
-			set
-			{
-				if ((this._DisplayOrder != value))
-				{
-					this._DisplayOrder = value;
 				}
 			}
 		}
@@ -2647,6 +1605,501 @@ namespace TradeControl.CashFlow.Data
 		}
 	}
 	
+	[global::System.Data.Linq.Mapping.TableAttribute(Name="App.vwHomeAccount")]
+	public partial class vwHomeAccount
+	{
+		
+		private string _SubjectCode;
+		
+		private string _SubjectName;
+		
+		public vwHomeAccount()
+		{
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_SubjectCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false)]
+		public string SubjectCode
+		{
+			get
+			{
+				return this._SubjectCode;
+			}
+			set
+			{
+				if ((this._SubjectCode != value))
+				{
+					this._SubjectCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_SubjectName", DbType="NVarChar(255) NOT NULL", CanBeNull=false)]
+		public string SubjectName
+		{
+			get
+			{
+				return this._SubjectName;
+			}
+			set
+			{
+				if ((this._SubjectName != value))
+				{
+					this._SubjectName = value;
+				}
+			}
+		}
+	}
+	
+	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwCategoryTrade")]
+	public partial class vwCategoryTrade
+	{
+		
+		private string _CategoryCode;
+		
+		private string _Category;
+		
+		private short _CategoryTypeCode;
+		
+		private System.Nullable<short> _CashPolarityCode;
+		
+		private System.Nullable<short> _CashTypeCode;
+		
+		private short _DisplayOrder;
+		
+		private short _IsEnabled;
+		
+		private string _InsertedBy;
+		
+		private System.DateTime _InsertedOn;
+		
+		private string _UpdatedBy;
+		
+		private System.DateTime _UpdatedOn;
+		
+		private System.Data.Linq.Binary _RowVer;
+		
+		public vwCategoryTrade()
+		{
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
+		public string CategoryCode
+		{
+			get
+			{
+				return this._CategoryCode;
+			}
+			set
+			{
+				if ((this._CategoryCode != value))
+				{
+					this._CategoryCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Category", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
+		public string Category
+		{
+			get
+			{
+				return this._Category;
+			}
+			set
+			{
+				if ((this._Category != value))
+				{
+					this._Category = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryTypeCode", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public short CategoryTypeCode
+		{
+			get
+			{
+				return this._CategoryTypeCode;
+			}
+			set
+			{
+				if ((this._CategoryTypeCode != value))
+				{
+					this._CategoryTypeCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashPolarityCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
+		public System.Nullable<short> CashPolarityCode
+		{
+			get
+			{
+				return this._CashPolarityCode;
+			}
+			set
+			{
+				if ((this._CashPolarityCode != value))
+				{
+					this._CashPolarityCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashTypeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
+		public System.Nullable<short> CashTypeCode
+		{
+			get
+			{
+				return this._CashTypeCode;
+			}
+			set
+			{
+				if ((this._CashTypeCode != value))
+				{
+					this._CashTypeCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public short DisplayOrder
+		{
+			get
+			{
+				return this._DisplayOrder;
+			}
+			set
+			{
+				if ((this._DisplayOrder != value))
+				{
+					this._DisplayOrder = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_IsEnabled", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public short IsEnabled
+		{
+			get
+			{
+				return this._IsEnabled;
+			}
+			set
+			{
+				if ((this._IsEnabled != value))
+				{
+					this._IsEnabled = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
+		public string InsertedBy
+		{
+			get
+			{
+				return this._InsertedBy;
+			}
+			set
+			{
+				if ((this._InsertedBy != value))
+				{
+					this._InsertedBy = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public System.DateTime InsertedOn
+		{
+			get
+			{
+				return this._InsertedOn;
+			}
+			set
+			{
+				if ((this._InsertedOn != value))
+				{
+					this._InsertedOn = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
+		public string UpdatedBy
+		{
+			get
+			{
+				return this._UpdatedBy;
+			}
+			set
+			{
+				if ((this._UpdatedBy != value))
+				{
+					this._UpdatedBy = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public System.DateTime UpdatedOn
+		{
+			get
+			{
+				return this._UpdatedOn;
+			}
+			set
+			{
+				if ((this._UpdatedOn != value))
+				{
+					this._UpdatedOn = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_RowVer", AutoSync=AutoSync.Always, DbType="rowversion NOT NULL", CanBeNull=false, IsDbGenerated=true, IsVersion=true, UpdateCheck=UpdateCheck.Never)]
+		public System.Data.Linq.Binary RowVer
+		{
+			get
+			{
+				return this._RowVer;
+			}
+			set
+			{
+				if ((this._RowVer != value))
+				{
+					this._RowVer = value;
+				}
+			}
+		}
+	}
+	
+	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwCategoryTotals")]
+	public partial class vwCategoryTotal
+	{
+		
+		private string _CategoryCode;
+		
+		private string _Category;
+		
+		private short _CategoryTypeCode;
+		
+		private System.Nullable<short> _CashPolarityCode;
+		
+		private System.Nullable<short> _CashTypeCode;
+		
+		private short _DisplayOrder;
+		
+		private short _IsEnabled;
+		
+		private string _InsertedBy;
+		
+		private System.DateTime _InsertedOn;
+		
+		private string _UpdatedBy;
+		
+		private System.DateTime _UpdatedOn;
+		
+		private System.Data.Linq.Binary _RowVer;
+		
+		public vwCategoryTotal()
+		{
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
+		public string CategoryCode
+		{
+			get
+			{
+				return this._CategoryCode;
+			}
+			set
+			{
+				if ((this._CategoryCode != value))
+				{
+					this._CategoryCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Category", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
+		public string Category
+		{
+			get
+			{
+				return this._Category;
+			}
+			set
+			{
+				if ((this._Category != value))
+				{
+					this._Category = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryTypeCode", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public short CategoryTypeCode
+		{
+			get
+			{
+				return this._CategoryTypeCode;
+			}
+			set
+			{
+				if ((this._CategoryTypeCode != value))
+				{
+					this._CategoryTypeCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashPolarityCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
+		public System.Nullable<short> CashPolarityCode
+		{
+			get
+			{
+				return this._CashPolarityCode;
+			}
+			set
+			{
+				if ((this._CashPolarityCode != value))
+				{
+					this._CashPolarityCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashTypeCode", DbType="SmallInt", UpdateCheck=UpdateCheck.Never)]
+		public System.Nullable<short> CashTypeCode
+		{
+			get
+			{
+				return this._CashTypeCode;
+			}
+			set
+			{
+				if ((this._CashTypeCode != value))
+				{
+					this._CashTypeCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public short DisplayOrder
+		{
+			get
+			{
+				return this._DisplayOrder;
+			}
+			set
+			{
+				if ((this._DisplayOrder != value))
+				{
+					this._DisplayOrder = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_IsEnabled", DbType="SmallInt NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public short IsEnabled
+		{
+			get
+			{
+				return this._IsEnabled;
+			}
+			set
+			{
+				if ((this._IsEnabled != value))
+				{
+					this._IsEnabled = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
+		public string InsertedBy
+		{
+			get
+			{
+				return this._InsertedBy;
+			}
+			set
+			{
+				if ((this._InsertedBy != value))
+				{
+					this._InsertedBy = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_InsertedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public System.DateTime InsertedOn
+		{
+			get
+			{
+				return this._InsertedOn;
+			}
+			set
+			{
+				if ((this._InsertedOn != value))
+				{
+					this._InsertedOn = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedBy", DbType="NVarChar(50) NOT NULL", CanBeNull=false, UpdateCheck=UpdateCheck.Never)]
+		public string UpdatedBy
+		{
+			get
+			{
+				return this._UpdatedBy;
+			}
+			set
+			{
+				if ((this._UpdatedBy != value))
+				{
+					this._UpdatedBy = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_UpdatedOn", DbType="DateTime NOT NULL", UpdateCheck=UpdateCheck.Never)]
+		public System.DateTime UpdatedOn
+		{
+			get
+			{
+				return this._UpdatedOn;
+			}
+			set
+			{
+				if ((this._UpdatedOn != value))
+				{
+					this._UpdatedOn = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_RowVer", AutoSync=AutoSync.Always, DbType="rowversion NOT NULL", CanBeNull=false, IsDbGenerated=true, IsVersion=true, UpdateCheck=UpdateCheck.Never)]
+		public System.Data.Linq.Binary RowVer
+		{
+			get
+			{
+				return this._RowVer;
+			}
+			set
+			{
+				if ((this._RowVer != value))
+				{
+					this._RowVer = value;
+				}
+			}
+		}
+	}
+	
 	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwBalanceSheet")]
 	public partial class vwBalanceSheet
 	{
@@ -2657,15 +2110,19 @@ namespace TradeControl.CashFlow.Data
 		
 		private string _AssetName;
 		
-		private System.Nullable<int> _CashModeCode;
+		private System.Nullable<int> _CashPolarityCode;
 		
-		private short _LiquidityLevel;
+		private System.Nullable<short> _LiquidityLevel;
 		
 		private System.DateTime _StartOn;
 		
-		private System.Nullable<double> _Balance;
+		private short _YearNumber;
+		
+		private short _MonthNumber;
 		
 		private System.Nullable<bool> _IsEntry;
+		
+		private System.Nullable<double> _Balance;
 		
 		public vwBalanceSheet()
 		{
@@ -2687,7 +2144,7 @@ namespace TradeControl.CashFlow.Data
 			}
 		}
 		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AssetCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false)]
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AssetCode", DbType="NVarChar(10)")]
 		public string AssetCode
 		{
 			get
@@ -2703,7 +2160,7 @@ namespace TradeControl.CashFlow.Data
 			}
 		}
 		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AssetName", DbType="NVarChar(50) NOT NULL", CanBeNull=false)]
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AssetName", DbType="NVarChar(50)")]
 		public string AssetName
 		{
 			get
@@ -2719,24 +2176,24 @@ namespace TradeControl.CashFlow.Data
 			}
 		}
 		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashModeCode", DbType="Int")]
-		public System.Nullable<int> CashModeCode
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashPolarityCode", DbType="Int")]
+		public System.Nullable<int> CashPolarityCode
 		{
 			get
 			{
-				return this._CashModeCode;
+				return this._CashPolarityCode;
 			}
 			set
 			{
-				if ((this._CashModeCode != value))
+				if ((this._CashPolarityCode != value))
 				{
-					this._CashModeCode = value;
+					this._CashPolarityCode = value;
 				}
 			}
 		}
 		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_LiquidityLevel", DbType="SmallInt NOT NULL")]
-		public short LiquidityLevel
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_LiquidityLevel", DbType="SmallInt")]
+		public System.Nullable<short> LiquidityLevel
 		{
 			get
 			{
@@ -2767,18 +2224,34 @@ namespace TradeControl.CashFlow.Data
 			}
 		}
 		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Balance", DbType="Float")]
-		public System.Nullable<double> Balance
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_YearNumber", DbType="SmallInt NOT NULL")]
+		public short YearNumber
 		{
 			get
 			{
-				return this._Balance;
+				return this._YearNumber;
 			}
 			set
 			{
-				if ((this._Balance != value))
+				if ((this._YearNumber != value))
 				{
-					this._Balance = value;
+					this._YearNumber = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_MonthNumber", DbType="SmallInt NOT NULL")]
+		public short MonthNumber
+		{
+			get
+			{
+				return this._MonthNumber;
+			}
+			set
+			{
+				if ((this._MonthNumber != value))
+				{
+					this._MonthNumber = value;
 				}
 			}
 		}
@@ -2795,6 +2268,103 @@ namespace TradeControl.CashFlow.Data
 				if ((this._IsEntry != value))
 				{
 					this._IsEntry = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Balance", DbType="Float")]
+		public System.Nullable<double> Balance
+		{
+			get
+			{
+				return this._Balance;
+			}
+			set
+			{
+				if ((this._Balance != value))
+				{
+					this._Balance = value;
+				}
+			}
+		}
+	}
+	
+	[global::System.Data.Linq.Mapping.TableAttribute(Name="Cash.vwBankAccounts")]
+	public partial class vwBankAccount
+	{
+		
+		private string _AccountCode;
+		
+		private string _AccountName;
+		
+		private decimal _OpeningBalance;
+		
+		private int _DisplayOrder;
+		
+		public vwBankAccount()
+		{
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AccountCode", DbType="NVarChar(10) NOT NULL", CanBeNull=false)]
+		public string AccountCode
+		{
+			get
+			{
+				return this._AccountCode;
+			}
+			set
+			{
+				if ((this._AccountCode != value))
+				{
+					this._AccountCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AccountName", DbType="NVarChar(50) NOT NULL", CanBeNull=false)]
+		public string AccountName
+		{
+			get
+			{
+				return this._AccountName;
+			}
+			set
+			{
+				if ((this._AccountName != value))
+				{
+					this._AccountName = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_OpeningBalance", DbType="Decimal(18,5) NOT NULL")]
+		public decimal OpeningBalance
+		{
+			get
+			{
+				return this._OpeningBalance;
+			}
+			set
+			{
+				if ((this._OpeningBalance != value))
+				{
+					this._OpeningBalance = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="Int NOT NULL")]
+		public int DisplayOrder
+		{
+			get
+			{
+				return this._DisplayOrder;
+			}
+			set
+			{
+				if ((this._DisplayOrder != value))
+				{
+					this._DisplayOrder = value;
 				}
 			}
 		}
@@ -3048,90 +2618,10 @@ namespace TradeControl.CashFlow.Data
 		}
 	}
 	
-	public partial class fnFlowCategoryResult
-	{
-		
-		private string _CategoryCode;
-		
-		private string _Category;
-		
-		private System.Nullable<short> _CashModeCode;
-		
-		private System.Nullable<short> _DisplayOrder;
-		
-		public fnFlowCategoryResult()
-		{
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryCode", DbType="NVarChar(10)")]
-		public string CategoryCode
-		{
-			get
-			{
-				return this._CategoryCode;
-			}
-			set
-			{
-				if ((this._CategoryCode != value))
-				{
-					this._CategoryCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Category", DbType="NVarChar(50)")]
-		public string Category
-		{
-			get
-			{
-				return this._Category;
-			}
-			set
-			{
-				if ((this._Category != value))
-				{
-					this._Category = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashModeCode", DbType="SmallInt")]
-		public System.Nullable<short> CashModeCode
-		{
-			get
-			{
-				return this._CashModeCode;
-			}
-			set
-			{
-				if ((this._CashModeCode != value))
-				{
-					this._CashModeCode = value;
-				}
-			}
-		}
-		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="SmallInt")]
-		public System.Nullable<short> DisplayOrder
-		{
-			get
-			{
-				return this._DisplayOrder;
-			}
-			set
-			{
-				if ((this._DisplayOrder != value))
-				{
-					this._DisplayOrder = value;
-				}
-			}
-		}
-	}
-	
 	public partial class fnFlowBankBalancesResult
 	{
 		
-		private string _CashAccountCode;
+		private string _AccountCode;
 		
 		private short _YearNumber;
 		
@@ -3143,18 +2633,18 @@ namespace TradeControl.CashFlow.Data
 		{
 		}
 		
-		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashAccountCode", DbType="NVarChar(10)")]
-		public string CashAccountCode
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_AccountCode", DbType="NVarChar(10)")]
+		public string AccountCode
 		{
 			get
 			{
-				return this._CashAccountCode;
+				return this._AccountCode;
 			}
 			set
 			{
-				if ((this._CashAccountCode != value))
+				if ((this._AccountCode != value))
 				{
-					this._CashAccountCode = value;
+					this._AccountCode = value;
 				}
 			}
 		}
@@ -3203,6 +2693,86 @@ namespace TradeControl.CashFlow.Data
 				if ((this._Balance != value))
 				{
 					this._Balance = value;
+				}
+			}
+		}
+	}
+	
+	public partial class fnFlowCategoryResult
+	{
+		
+		private string _CategoryCode;
+		
+		private string _Category;
+		
+		private System.Nullable<short> _CashPolarityCode;
+		
+		private System.Nullable<short> _DisplayOrder;
+		
+		public fnFlowCategoryResult()
+		{
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CategoryCode", DbType="NVarChar(10)")]
+		public string CategoryCode
+		{
+			get
+			{
+				return this._CategoryCode;
+			}
+			set
+			{
+				if ((this._CategoryCode != value))
+				{
+					this._CategoryCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_Category", DbType="NVarChar(50)")]
+		public string Category
+		{
+			get
+			{
+				return this._Category;
+			}
+			set
+			{
+				if ((this._Category != value))
+				{
+					this._Category = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_CashPolarityCode", DbType="SmallInt")]
+		public System.Nullable<short> CashPolarityCode
+		{
+			get
+			{
+				return this._CashPolarityCode;
+			}
+			set
+			{
+				if ((this._CashPolarityCode != value))
+				{
+					this._CashPolarityCode = value;
+				}
+			}
+		}
+		
+		[global::System.Data.Linq.Mapping.ColumnAttribute(Storage="_DisplayOrder", DbType="SmallInt")]
+		public System.Nullable<short> DisplayOrder
+		{
+			get
+			{
+				return this._DisplayOrder;
+			}
+			set
+			{
+				if ((this._DisplayOrder != value))
+				{
+					this._DisplayOrder = value;
 				}
 			}
 		}

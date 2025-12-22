@@ -1,11 +1,12 @@
-﻿using System.Diagnostics;
+﻿using ClosedXML.Excel;
+using CsvHelper;
+using CsvHelper.Configuration;
+using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using TCExports.Generator.Contracts;
-using ClosedXML.Excel;
-using CsvHelper;
-using CsvHelper.Configuration;
-using System.Globalization;
+using TCExports.Generator.Excel;
 
 namespace TCExports.Generator.Handlers;
 
@@ -120,6 +121,8 @@ public sealed class TestExcelHandler : IDocumentHandler
             }
 
             ws.Columns().AdjustToContents();
+
+            SettingsSheetBuilder.AddSettingsWorksheet(wb, payload);
 
             using var ms = new MemoryStream();
             wb.SaveAs(ms);

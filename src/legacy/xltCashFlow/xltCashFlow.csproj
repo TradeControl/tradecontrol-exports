@@ -135,6 +135,9 @@
     <Compile Include="CtlActionsPane.Designer.cs">
       <DependentUpon>CtlActionsPane.cs</DependentUpon>
     </Compile>
+    <Compile Include="Data\dbTradeControl.cs">
+      <DependentUpon>dbTradeControl.dbml</DependentUpon>
+    </Compile>
     <Compile Include="Data\dbTradeControl.designer.cs">
       <DependentUpon>dbTradeControl.dbml</DependentUpon>
       <DesignTime>True</DesignTime>
@@ -191,6 +194,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
     <None Include="xltCashFlow.xltx" />
+    <None Include="xltCashFlow_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>
     <None Include="ThisWorkbook.Designer.xml">
@@ -225,11 +229,10 @@
     <SignManifests>true</SignManifests>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestCertificateThumbprint>4CEA4D4C78609FD8145412744FFBDA87A7D6D405</ManifestCertificateThumbprint>
+    <ManifestCertificateThumbprint>476CE7128D60988ED5659351038DBCA28D5AC629</ManifestCertificateThumbprint>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestKeyFile>
-    </ManifestKeyFile>
+    <ManifestKeyFile>xltCashFlow_TemporaryKey.pfx</ManifestKeyFile>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>

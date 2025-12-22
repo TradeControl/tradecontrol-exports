@@ -64,7 +64,6 @@ namespace TradeControl.CashFlow
                 LoadCategories(CashFlow, CashType.Trade, includeActivePeriods, includeOrderBook, false);
                 LoadCategories(CashFlow, CashType.Money, false, false, false);
                 LoadTotals(CashFlow, CashType.Trade, CategoryType.Total);
-
                 LoadCategories(CashFlow, CashType.Tax, includeActivePeriods, false, includeTaxAccruals);
                 LoadTotals(CashFlow, CashType.Tax, CategoryType.Total);
 
@@ -345,15 +344,15 @@ namespace TradeControl.CashFlow
 
                 if (!Greyscale)
                 {
-                    switch ((CashMode)category.CashModeCode)
+                    switch ((CashPolarity)category.CashPolarityCode)
                     {
-                        case CashMode.Expense:
+                        case CashPolarity.Expense:
                             ws.Cells[curRow, 1].EntireRow.Cells.Interior.Color = Color.LightSalmon;
                             break;
-                        case CashMode.Income:
+                        case CashPolarity.Income:
                             ws.Cells[curRow, 1].EntireRow.Cells.Interior.Color = Color.CornflowerBlue;
                             break;
-                        case CashMode.Neutral:
+                        case CashPolarity.Neutral:
                             ws.Cells[curRow, 1].EntireRow.Cells.Interior.Color = Color.LightGray;
                             break;
                     }
@@ -365,7 +364,7 @@ namespace TradeControl.CashFlow
                 for (int curCol = 4; curCol <= lastCol; curCol++)
                 {
                     string formula = $"=SUM({Column(curCol)}{startRow + 1}:{Column(curCol)}{curRow - 1})";
-                    if ((CashMode)category.CashModeCode == CashMode.Expense)
+                    if ((CashPolarity)category.CashPolarityCode == CashPolarity.Expense)
                         formula += "*-1";
                     ws.Cells[curRow, curCol].Formula = formula;
                 }
@@ -624,9 +623,9 @@ namespace TradeControl.CashFlow
                 short yearNumber = 0;
 
                 curRow++;
-                ws.Cells[curRow, 1].Value = bankAccount.CashAccountName;
+                ws.Cells[curRow, 1].Value = bankAccount.AccountName;
 
-                var balances = dataContext.BankBalances(bankAccount.CashAccountCode);
+                var balances = dataContext.BankBalances(bankAccount.AccountCode);
                 foreach (Data.fnFlowBankBalancesResult balance in balances)
                 {
                     if (yearNumber == 0)

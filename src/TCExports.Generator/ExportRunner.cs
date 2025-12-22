@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using TCExports.Generator.Contracts;
+using TCExports.Generator.Data;
 using TCExports.Generator.Handlers;
 using TCExports.Generator.Validation;
 
@@ -22,19 +23,19 @@ public static class ExportRunner
 
         var services = new ServiceCollection()
 
-            // format-specific handlers used internally by TestHandler
+            #region test 
+            .AddSingleton<IDocumentHandler, TestHandler>()
             .AddSingleton<TestCsvHandler>()
             .AddSingleton<TestExcelHandler>()
-            .AddSingleton<TestLibreHandler>()
+            .AddSingleton<TestLibreHandler>()            
+            .AddSingleton<IPayloadValidator, TestPayloadValidator>()  
+            #endregion
 
-            // single meta handler for 'test'
-            .AddSingleton<IDocumentHandler, TestHandler>()
-
-            // document-specific validator(s)
-            .AddSingleton<IPayloadValidator, TestPayloadValidator>()
-
-            // single handler stub for future statements
+            #region cash flow statements        
             .AddSingleton<IDocumentHandler, CashStatementHandler>()
+            .AddSingleton<ICashFlowRepository, SqlServerCashFlowRepository>()
+            .AddSingleton<IPayloadValidator, CashPayloadValidator>() 
+            #endregion
 
             .AddSingleton<IExportEngine, ExportEngine>()
             .BuildServiceProvider();
