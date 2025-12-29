@@ -1,0 +1,15 @@
+﻿{
+  "TextStatementTitle": "{0} {1}",
+  "TextDate": "Date",
+  "TextCode": "Code",
+  "TextName": "Name",
+  "TextTotals": "Totals",
+  "TextSummary": "Summary",
+  "TextPeriodTotal": "Period Total",
+  "TextClosingBalances": "Closing Balances",
+  "TextCompanyBalance": "Company Balance",
+  "TextBalanceSheet": "Balance Sheet",
+  "TextVatDueTitle": "VAT Due",
+  "TextVatDueTotals": "VAT Due Totals",
+  "TextAnalysis": "Analysis"
+}

@@ -7,13 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Update="python\exporters\test_ods_export.py">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="python\exporters\test_csv_export.py">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+    <!-- Copy entire python folder (and subfolders/files) to output -->
+    <Content Include="python\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+</ItemGroup>
 
   <ItemGroup>
     <Folder Include="Exports\" />

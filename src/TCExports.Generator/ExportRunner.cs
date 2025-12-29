@@ -28,13 +28,18 @@ public static class ExportRunner
             .AddSingleton<TestCsvHandler>()
             .AddSingleton<TestExcelHandler>()
             .AddSingleton<TestLibreHandler>()            
-            .AddSingleton<IPayloadValidator, TestPayloadValidator>()  
+            .AddSingleton<IPayloadValidator, TestPayloadValidator>()
             #endregion
 
-            #region cash flow statements        
+            #region cash flow statements
+            // Routing handler for cashflow (delegates to excel/libre handlers)
             .AddSingleton<IDocumentHandler, CashStatementHandler>()
+            // Excel implementation + its repository
+            .AddSingleton<CashStatementExcelHandler>()
             .AddSingleton<ICashFlowRepository, SqlServerCashFlowRepository>()
-            .AddSingleton<IPayloadValidator, CashPayloadValidator>() 
+            // Libre implementation (shells out to Python)
+            .AddSingleton<CashStatementLibreHandler>()
+            .AddSingleton<IPayloadValidator, CashPayloadValidator>()
             #endregion
 
             .AddSingleton<IExportEngine, ExportEngine>()
