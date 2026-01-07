@@ -66,7 +66,6 @@ namespace TradeControl.CashFlow
                 LoadTotals(CashFlow, CashType.Trade, CategoryType.Total);
                 LoadCategories(CashFlow, CashType.Tax, includeActivePeriods, false, includeTaxAccruals);
                 LoadTotals(CashFlow, CashType.Tax, CategoryType.Total);
-
                 LoadTotalsFormula(CashFlow);
                 LoadExpressions(CashFlow);
 

@@ -1,13 +1,279 @@
-﻿# pip install pyodbc odfpy
-import sys, argparse, base64, io
+﻿# pip install odfdo
+import sys, argparse, base64, io, zipfile
 import pyodbc
-from odf.opendocument import OpenDocumentSpreadsheet
-from odf.table import Table, TableRow, TableCell, TableHeaderRows
-from odf.text import P
-from odf.style import Style, TableCellProperties, TextProperties
-from odf import config
+from lxml import etree as ET
+from odfdo import Document
+from odfdo.table import Table, Row, Cell, Column
 
-def main():
+OFFICE_NS = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+STYLE_NS  = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+NUMBER_NS = "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0"
+TABLE_NS  = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+TEXT_NS   = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+
+def _col_letter(index_1based: int) -> str:
+    dividend = index_1based
+    name = ""
+    while dividend > 0:
+        modulo = (dividend - 1) % 26
+        name = chr(65 + modulo) + name
+        dividend = (dividend - modulo) // 26
+    return name
+
+def build_format_template_sheet(doc: Document, cur, sheet_name: str = "FormatTemplates") -> Table:
+    """
+    Per-cell formatting (styles injected post-save).
+    Supports:
+      - Num0/Num1/Num2  -> numbers (float)
+      - Pct0/Pct1/Pct2  -> percentages
+      - Cash0/Cash2     -> accounting numbers; negatives red + parentheses
+    Columns for Cash expand to pairs: CashX+ and CashX-.
+    Row 2:
+      - CashX+: constant 1234.567
+      - CashX-: formula = -(<CashX+ col>2)
+    Row 3:
+      - CashX+: formula = <CashX+ col>2 (echo)
+      - CashX-: formula = -(<CashX+ col>3)
+    """
+    table = Table(sheet_name)
+
+    templates = cur.fetchall()
+    if not templates:
+        r = Row(); r.append(Cell(text="(no templates)")); table.append(r)
+        return table
+
+    # Normalize and expand Cash into +/-
+    input_codes = [(tpl[0] if not isinstance(tpl, dict) else tpl.get("TemplateCode", "")).strip() for tpl in templates]
+    upper_codes = [c.upper() for c in input_codes]
+
+    expanded_headers: list[tuple[str, str, str]] = []  # (headerTitle, styleName, baseCodeUpper)
+    for code, ucode in zip(input_codes, upper_codes):
+        if ucode.startswith("CASH"):
+            # Use explicit POS/NEG styles per cell to avoid relying on style:map
+            expanded_headers.append((f"{code}+", f"{ucode}_POS_CELL", ucode))
+            expanded_headers.append((f"{code}-", f"{ucode}_NEG_CELL", ucode))
+        else:
+            expanded_headers.append((code, f"{ucode}_CELL", ucode))
+
+    # Create columns
+    for _ in expanded_headers:
+        table.append(Column())
+
+    # Row 1: headers
+    header = Row()
+    for title, _, _ in expanded_headers:
+        header.append(Cell(text=title))
+    table.append(header)
+
+    # Precompute column letters
+    col_letters = [_col_letter(i) for i in range(1, len(expanded_headers) + 1)]
+
+    # Row 2: constants and Cash - formulas
+    constants = Row()
+    for idx, (title, style_name, base_ucode) in enumerate(expanded_headers, start=1):
+        cell = Cell()
+        if base_ucode.startswith("PCT"):
+            cell.set_attribute("office:value-type", "percentage")
+            cell.set_attribute("office:value", "0.23456")  # 23.456%
+        elif base_ucode.startswith("CASH"):
+            cell.set_attribute("office:value-type", "float")
+            if title.endswith("+"):
+                cell.set_attribute("office:value", "1234.567")
+            else:
+                plus_col = col_letters[idx - 2]  # previous column letter
+                cell.set_attribute("office:value", "-1234.567")  # placeholder for pre-recalc display
+                cell.set_attribute("table:formula", f"of:=-{plus_col}2")
+        else:
+            cell.set_attribute("office:value-type", "float")
+            cell.set_attribute("office:value", "1.2345")
+
+        cell.set_attribute("table:style-name", style_name)
+        constants.append(cell)
+    table.append(constants)
+
+    # Row 3: echo formulas; Cash -: negate the + column’s row 3
+    formulas = Row()
+    for idx, (title, style_name, base_ucode) in enumerate(expanded_headers, start=1):
+        f = Cell()
+        if base_ucode.startswith("PCT"):
+            f.set_attribute("office:value-type", "percentage")
+            f.set_attribute("office:value", "0.23456")
+            f.set_attribute("table:formula", f"of:={col_letters[idx - 1]}2")
+        elif base_ucode.startswith("CASH"):
+            f.set_attribute("office:value-type", "float")
+            if title.endswith("+"):
+                f.set_attribute("office:value", "1234.567")
+                f.set_attribute("table:formula", f"of:={col_letters[idx - 1]}2")
+            else:
+                plus_col = col_letters[idx - 2]
+                f.set_attribute("office:value", "-1234.567")
+                f.set_attribute("table:formula", f"of:=-{plus_col}3")
+        else:
+            f.set_attribute("office:value-type", "float")
+            f.set_attribute("office:value", "1.2345")
+            f.set_attribute("table:formula", f"of:={col_letters[idx - 1]}2")
+
+        f.set_attribute("table:style-name", style_name)
+        formulas.append(f)
+    table.append(formulas)
+
+    return table
+
+def _inject_styles_into_content(content_xml: bytes) -> bytes:
+    """
+    Inject styles into content.xml/office:automatic-styles for actually used styles:
+      - numbers (Num*): number-style with dp, grouping
+      - percentages (Pct*): percentage-style with dp and trailing %
+      - cash (Cash*): explicit POS/NEG data styles and cell styles (no style:map)
+        NEG is red with parentheses and no leading minus.
+    """
+    parser = ET.XMLParser(remove_blank_text=False)
+    root = ET.fromstring(content_xml, parser=parser)
+
+    auto = root.find(ET.QName(OFFICE_NS, "automatic-styles"))
+    if auto is None:
+        auto = ET.Element(ET.QName(OFFICE_NS, "automatic-styles"))
+        root.insert(0, auto) if len(root) else root.append(auto)
+
+    body = root.find(ET.QName(OFFICE_NS, "body"))
+    if body is not None:
+        ss = body.find(ET.QName(OFFICE_NS, "spreadsheet"))
+        if ss is not None:
+            for tbl in list(ss.findall(ET.QName(TABLE_NS, "table"))):
+                if tbl.get(ET.QName(TABLE_NS, "name")) == "Feuille1":
+                    ss.remove(tbl)
+
+    used_styles: dict[str, tuple[str, int]] = {}
+    for cell in root.findall(f".//{ET.QName(TABLE_NS, 'table-cell')}"):
+        sname = cell.get(ET.QName(TABLE_NS, "style-name"))
+        if not sname:
+            continue
+        uname = sname.strip().upper()
+        if uname.startswith("NUM"):
+            try: dp = int(uname[3])
+            except Exception: dp = 0
+            used_styles[uname] = ("number", dp)
+        elif uname.startswith("PCT"):
+            try: dp = int(uname[3])
+            except Exception: dp = 0
+            used_styles[uname] = ("percentage", dp)
+        elif uname.startswith("CASH"):
+            try: dp = int(uname[4])
+            except Exception: dp = 0
+            if uname.endswith("_POS_CELL"):
+                used_styles[uname] = ("cash_pos", dp)
+            elif uname.endswith("_NEG_CELL"):
+                used_styles[uname] = ("cash_neg", dp)
+        if cell.find(ET.QName(TEXT_NS, "p")) is None:
+            ET.SubElement(cell, ET.QName(TEXT_NS, "p"))
+
+    def find_style(tag_ns: str, tag_local: str, name_attr_ns: str, name: str):
+        for el in auto.findall(ET.QName(tag_ns, tag_local)):
+            if el.get(ET.QName(name_attr_ns, "name")) == name:
+                return el
+        return None
+
+    def ensure_number_ds(name: str, dp: int):
+        ds = find_style(NUMBER_NS, "number-style", STYLE_NS, name)
+        if ds is None:
+            ds = ET.SubElement(auto, ET.QName(NUMBER_NS, "number-style"))
+            ds.set(ET.QName(STYLE_NS, "name"), name)
+            ds.set(ET.QName(STYLE_NS, "language"), "en")
+            ds.set(ET.QName(STYLE_NS, "country"), "GB")
+            pos = ET.SubElement(ds, ET.QName(NUMBER_NS, "number"))
+            pos.set(ET.QName(NUMBER_NS, "decimal-places"), str(dp))
+            pos.set(ET.QName(NUMBER_NS, "min-decimal-places"), str(dp))
+            pos.set(ET.QName(NUMBER_NS, "min-integer-digits"), "1")
+            pos.set(ET.QName(NUMBER_NS, "grouping"), "true")
+        return ds
+
+    def ensure_percent_ds(name: str, dp: int):
+        ds = find_style(NUMBER_NS, "percentage-style", STYLE_NS, name)
+        if ds is None:
+            ds = ET.SubElement(auto, ET.QName(NUMBER_NS, "percentage-style"))
+            ds.set(ET.QName(STYLE_NS, "name"), name)
+            ds.set(ET.QName(STYLE_NS, "language"), "en")
+            ds.set(ET.QName(STYLE_NS, "country"), "GB")
+            num = ET.SubElement(ds, ET.QName(NUMBER_NS, "number"))
+            num.set(ET.QName(NUMBER_NS, "decimal-places"), str(dp))
+            num.set(ET.QName(NUMBER_NS, "min-decimal-places"), str(dp))
+            num.set(ET.QName(NUMBER_NS, "min-integer-digits"), "1")
+            ET.SubElement(ds, ET.QName(NUMBER_NS, "text")).text = "%"
+        return ds
+
+    def ensure_cell_style(name: str, data_style_name: str, neg_red: bool = False):
+        cs = find_style(STYLE_NS, "style", STYLE_NS, name)
+        if cs is None:
+            cs = ET.SubElement(auto, ET.QName(STYLE_NS, "style"))
+            cs.set(ET.QName(STYLE_NS, "name"), name)
+            cs.set(ET.QName(STYLE_NS, "family"), "table-cell")
+            cs.set(ET.QName(STYLE_NS, "parent-style-name"), "Default")
+            ET.SubElement(cs, ET.QName(STYLE_NS, "table-cell-properties"))
+        cs.set(ET.QName(STYLE_NS, "data-style-name"), data_style_name)
+        if neg_red:
+            tp = cs.find(ET.QName(STYLE_NS, "text-properties"))
+            if tp is None:
+                tp = ET.SubElement(cs, ET.QName(STYLE_NS, "text-properties"))
+            tp.set("{urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0}color", "#FF0000")
+        return cs
+
+    def ensure_cash_neg_ds(name: str, dp: int):
+        # Negative accounting: parentheses + red number, and suppress leading minus sign.
+        ds = find_style(NUMBER_NS, "number-style", STYLE_NS, name)
+        if ds is None:
+            ds = ET.SubElement(auto, ET.QName(NUMBER_NS, "number-style"))
+            ds.set(ET.QName(STYLE_NS, "name"), name)
+            ds.set(ET.QName(STYLE_NS, "language"), "en")
+            ds.set(ET.QName(STYLE_NS, "country"), "GB")
+            # Override minus sign to empty to avoid "-(value)"
+            ET.SubElement(ds, ET.QName(NUMBER_NS, "minus-sign"))
+            # Open parenthesis
+            ET.SubElement(ds, ET.QName(NUMBER_NS, "text")).text = "("
+            # Number with grouping and dp
+            neg = ET.SubElement(ds, ET.QName(NUMBER_NS, "number"))
+            neg.set(ET.QName(NUMBER_NS, "decimal-places"), str(dp))
+            neg.set(ET.QName(NUMBER_NS, "min-decimal-places"), str(dp))
+            neg.set(ET.QName(NUMBER_NS, "min-integer-digits"), "1")
+            neg.set(ET.QName(NUMBER_NS, "grouping"), "true")
+            # Close parenthesis
+            ET.SubElement(ds, ET.QName(NUMBER_NS, "text")).text = ")"
+        return ds
+
+    for cell_style_name, (kind, dp) in used_styles.items():
+        if kind == "number":
+            ds_name = cell_style_name.replace("_CELL", "_DS")
+            ensure_number_ds(ds_name, dp)
+            ensure_cell_style(cell_style_name, ds_name)
+        elif kind == "percentage":
+            ds_name = cell_style_name.replace("_CELL", "_DS")
+            ensure_percent_ds(ds_name, dp)
+            ensure_cell_style(cell_style_name, ds_name)
+        elif kind == "cash_pos":
+            ds_name = cell_style_name.replace("_POS_CELL", "_POS_DS")
+            ensure_number_ds(ds_name, dp)
+            ensure_cell_style(cell_style_name, ds_name, neg_red=False)
+        elif kind == "cash_neg":
+            ds_name = cell_style_name.replace("_NEG_CELL", "_NEG_DS")
+            ensure_cash_neg_ds(ds_name, dp)
+            ensure_cell_style(cell_style_name, ds_name, neg_red=True)
+
+    return ET.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+def _finalize_ods_add_template_styles(ods_bytes: bytes) -> bytes:
+    in_mem = io.BytesIO(ods_bytes)
+    with zipfile.ZipFile(in_mem, "r") as zin:
+        content_xml = zin.read("content.xml")
+        new_content = _inject_styles_into_content(content_xml)
+        out_mem = io.BytesIO()
+        with zipfile.ZipFile(out_mem, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                if item.filename == "content.xml":
+                    zout.writestr("content.xml", new_content)
+                else:
+                    zout.writestr(item, zin.read(item.filename))
+        return out_mem.getvalue()
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--conn", required=True)
     parser.add_argument("--query", required=True)
@@ -18,78 +284,19 @@ def main():
     cur = conn.cursor()
     cur.execute(args.query)
 
-    doc = OpenDocumentSpreadsheet()
-
-    # Header style: bold + light gray background + bottom border
-    header_style = Style(name="HeaderCell", family="table-cell")
-    header_style.addElement(TextProperties(fontweight="bold"))
-    header_style.addElement(TableCellProperties(
-        backgroundcolor="#D9D9D9",
-        borderbottom="0.75pt solid #808080"
-    ))
-
-    data_style = Style(name="DataCell", family="table-cell")
-    data_style.addElement(TableCellProperties())
-
-    doc.automaticstyles.addElement(header_style)
-    doc.automaticstyles.addElement(data_style)
-
-    table_name = "Export"
-    table = Table(name=table_name)
-
-    # Header row in a header group (repeats on print)
-    header_row = TableRow()
-    for col in cur.description:
-        cell = TableCell(stylename=header_style)
-        cell.addElement(P(text=str(col[0])))
-        header_row.addElement(cell)
-    header_group = TableHeaderRows()
-    header_group.addElement(header_row)
-    table.addElement(header_group)
-
-    # Data rows
-    for row in cur.fetchall():
-        tr = TableRow()
-        for val in row:
-            cell = TableCell(stylename=data_style)
-            cell.addElement(P(text="" if val is None else str(val)))
-            tr.addElement(cell)
-        table.addElement(tr)
-
-    doc.spreadsheet.addElement(table)
-
-    # Freeze the first row in Calc via view settings (settings.xml)
-    # Note: These are LibreOffice-specific config keys.
-    view_settings = config.ConfigItemSet(name="ooo:view-settings")
-    views = config.ConfigItemMapIndexed(name="Views")
-    view = config.ConfigItemMapEntry()
-    tables = config.ConfigItemMapNamed(name="Tables")
-
-    table_entry = config.ConfigItemMapEntry(name=table_name)
-
-    def add_item(name, typ, text):
-        itm = config.ConfigItem(name=name, type=typ)
-        itm.addText(text)
-        table_entry.addElement(itm)
-
-    add_item("HorizontalSplitMode", "short", "2")     # 2 = freeze
-    add_item("HorizontalSplitPosition", "int", "2")   # freeze at row 2 -> keeps row 1 visible
-    add_item("VerticalSplitMode", "short", "0")
-    add_item("VerticalSplitPosition", "int", "0")
-    add_item("ActiveSplitRange", "short", "2")
-
-    tables.addElement(table_entry)
-    view.addElement(tables)
-    views.addElement(view)
-    view_settings.addElement(views)
-    doc.settings.addElement(view_settings)
+    doc = Document("spreadsheet")
+    template_sheet = build_format_template_sheet(doc, cur, sheet_name="FormatTemplates")
+    doc.body.append(template_sheet)
 
     buf = io.BytesIO()
-    doc.save(buf)
-    conn.close()
+    try:
+        doc.save(buf)
+        content = buf.getvalue()
+    except TypeError:
+        content = doc.save()
+    finally:
+        conn.close()
 
-    encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+    content = _finalize_ods_add_template_styles(content)
+    encoded = base64.b64encode(content).decode("ascii")
     print(f"{args.filename}|{encoded}")
-
-if __name__ == "__main__":
-    main()
