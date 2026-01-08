@@ -4,12 +4,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
-# Bootstrap: add parent 'python' folder to sys.path so 'data' and 'i18n' imports resolve
-_here = Path(__file__).resolve().parent        # .../python/exporters
-_python_root = _here.parent                    # .../python
-if str(_python_root) not in sys.path:
-    sys.path.insert(0, str(_python_root))
-
 from odf.opendocument import OpenDocumentSpreadsheet
 from odf.table import Table, TableRow, TableCell
 from odf.text import P

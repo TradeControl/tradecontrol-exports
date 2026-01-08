@@ -39,6 +39,11 @@ public sealed class TestLibreHandler : IDocumentHandler
                 CreateNoWindow = true
             };
 
+            // Ensure Python can import from ...\bin\...\python (style_factory, data, i18n, etc.)
+            var baseDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
+            var pythonRoot = Path.Combine(baseDir, "python");
+            psi.EnvironmentVariables["PYTHONPATH"] = pythonRoot;
+
             psi.ArgumentList.Add(scriptPath);
             psi.ArgumentList.Add("--conn");
             psi.ArgumentList.Add(payload.SqlConnection);

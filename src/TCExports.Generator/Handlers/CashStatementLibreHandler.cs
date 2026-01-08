@@ -1,6 +1,8 @@
 ﻿using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Reflection;
+
 using TCExports.Generator.Contracts;
 
 namespace TCExports.Generator.Handlers;
@@ -40,6 +42,8 @@ public sealed class CashStatementLibreHandler : IDocumentHandler
 
         try
         {
+            psi.EnvironmentVariables["PYTHONPATH"] = pythonRoot;
+
             using var proc = new Process { StartInfo = psi };
             proc.Start();
 
