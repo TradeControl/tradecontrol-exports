@@ -1,54 +1,47 @@
-﻿# pip install pyodbc odfpy
+﻿# pip install pyodbc odfdo
 import json, sys, io, base64
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
-from odf.opendocument import OpenDocumentSpreadsheet
-from odf.table import Table, TableRow, TableCell
-from odf.text import P
-from odf.style import Style, TableCellProperties, TextProperties
-from odf.number import NumberStyle, Number, PercentageStyle
-from odf.namespaces import STYLENS, TABLENS, OFFICENS
-from odf import config
+from odfdo import Document
+from odfdo.table import Table, Row, Cell, Column
+
 from data.enums import CashType
 from data.factory import create_repo
 from i18n.resources import ResourceManager
+from style_factory import apply_styles_bytes
 
-def build_styles(doc):
-    # Number style: zero decimal places
-    int_style = NumberStyle(name="Int0")
-    int_style.addElement(Number(decimalplaces=0, minintegerdigits=1))
-    doc.automaticstyles.addElement(int_style)
+# ********** TEMP **************************************
+def _append_add_number_cell_check(doc: Document) -> None:
+    """
+    Verify formatting via add_number_cell:
+    - E1: 1234.5678
+    - F1: -E1
+    Both with base accounting style CASH2_CELL (maps to POS/NEG).
+    """
+    tbl = Table(name="AddNumberCellCheck")
+    # Ensure columns up to F
+    for _ in range(6):
+        tbl.append(Column())
 
-    # Percentage style: 2 decimal places
-    pct_style_num = PercentageStyle(name="Pct2")
-    pct_style_num.addElement(Number(decimalplaces=2, minintegerdigits=1))
-    doc.automaticstyles.addElement(pct_style_num)
+    r1 = Row()
+    # A-D empty to reach E
+    for _ in range(4):
+        r1.append(Cell())
 
-    # Header style (text only)
-    header = Style(name="HeaderCell", family="table-cell")
-    header.addElement(TextProperties(fontweight="bold"))
-    header.addElement(TableCellProperties(backgroundcolor="#D9D9D9", borderbottom="0.75pt solid #808080"))
+    # E1 via add_number_cell (value)
+    add_number_cell(r1, value=1234.5678, style="CASH0_CELL")
+    # F1 via add_number_cell (formula)
+    add_number_cell(r1, formula="E1*-1", style="CASH0_CELL")
 
-    # Total style (bind number style for zero-dp display)
-    total = Style(name="TotalCell", family="table-cell", datastylename="Int0")
-    total.addElement(TextProperties(fontweight="bold"))
-    total.addElement(TableCellProperties(backgroundcolor="#EEEEEE", borderbottom="0.75pt solid #808080"))
-
-    # Data style (bind number style for zero-dp display)
-    data = Style(name="DataCell", family="table-cell", datastylename="Int0")
-    data.addElement(TableCellProperties())
-
-    doc.automaticstyles.addElement(header)
-    doc.automaticstyles.addElement(total)
-    doc.automaticstyles.addElement(data)
-    return header, total, data
+    tbl.append(r1)
+    doc.body.append(tbl)
+# ********** TEMP **************************************
 
 
-def _col_letter(col_index_1based: int) -> str:
-    # Excel-like column letters (A=1)
-    dividend = col_index_1based
+def _col_letter(index_1based: int) -> str:
+    dividend = index_1based
     name = ""
     while dividend > 0:
         modulo = (dividend - 1) % 26
@@ -56,139 +49,155 @@ def _col_letter(col_index_1based: int) -> str:
         dividend = (dividend - modulo) // 26
     return name
 
-def add_text_cell(row, text: str, style=None):
-    cell = TableCell(stylename=style) if style else TableCell()
-    # Only add text when not empty; allows visual overflow from A to empty B in UI
+def add_text_cell(row: Row, text: str, style: Optional[str] = None):
+    # Only add text when not empty; allows visual overflow in UI
     if text is not None and str(text) != "":
-        cell.addElement(P(text=str(text)))
-    row.addElement(cell)
+        row.append(Cell(text=str(text)))
+    else:
+        row.append(Cell())
 
-def add_number_cell(row, value: float = None, style=None, formula: str = None, display_text: str = None):
+def add_number_cell(row: Row, value: float = None, style: Optional[str] = None, formula: str = None, display_text: str = None):
     """
     Write a numeric or formula cell that Calc treats as numeric.
-    - numeric: valuetype="float" and value
-    - formula: formula="of:=..." and valuetype="float"
+    - numeric: office:value-type="float" and office:value
+    - formula: table:formula="of:=..." and office:value-type="float" with office:value="0"
     Do not add visible text for numeric cells (prevents string casting).
+    Pragmatic override: when style is a neutral CASHx_CELL, stamp POS/NEG style directly.
     """
-    cell = TableCell(stylename=style) if style else TableCell()
+    def resolve_cash_style(base: str, is_negative: bool) -> str:
+        u = (base or "").strip().upper()
+        if not u.startswith("CASH") or not u.endswith("_CELL"):
+            return base or "CASH0_CELL"
+        if u.endswith("_POS_CELL") or u.endswith("_NEG_CELL"):
+            return u
+        return u.replace("_CELL", "_NEG_CELL" if is_negative else "_POS_CELL")
+
+    cell = Cell()
+    is_negative = False
 
     if formula:
-        cell.setAttribute("formula", f"of:={formula}")
-        cell.setAttribute("valuetype", "float")
-        if display_text is not None and str(display_text) != "":
-            cell.addElement(P(text=str(display_text)))
+        # Heuristic: detect simple negative formulas
+        f = formula.strip().upper()
+        # negatives like "-A1", "A1*-1", "SUM(...)*-1", "(-A1)", etc.
+        if f.startswith("-"):
+            is_negative = True
+        elif "*-1" in f or "=-" in f:
+            is_negative = True
+        cell.set_attribute("table:formula", f"of:={formula}")
+        cell.set_attribute("office:value-type", "float")
+        cell.set_attribute("office:value", "0")
     else:
         num = float(value or 0.0)
-        cell.setAttribute("valuetype", "float")
-        cell.setAttribute("value", str(num))
+        is_negative = num < 0
+        cell.set_attribute("office:value-type", "float")
+        cell.set_attribute("office:value", str(num))
 
-    row.addElement(cell)
+    # Apply resolved style
+    stamped_style = resolve_cash_style(style or "CASH0_CELL", is_negative)
+    cell.set_attribute("table:style-name", stamped_style)
+    row.append(cell)
 
-def freeze_first_rows(doc, table_name, freeze_row_index=4):
+def _to_semantic_cell_style(template_code: Optional[str]) -> str:
     """
-    Freeze rows 1-4 and columns A-C (months row stays visible; column D scrolls).
-    Uses split positions equal to the number of frozen rows/columns.
+    Map a Template Code from the database (e.g., 'Cash0','Num2','Pct1')
+    to a canonical semantic cell style name used by the Style Factory.
+    Defaults to CASH0_CELL if missing or unrecognized.
     """
-    view_settings = config.ConfigItemSet(name="ooo:view-settings")
-    views = config.ConfigItemMapIndexed(name="Views")
-    view = config.ConfigItemMapEntry()
-    tables = config.ConfigItemMapNamed(name="Tables")
-    table_entry = config.ConfigItemMapEntry(name=table_name)
+    if not template_code:
+        return "CASH0_CELL"
+    u = template_code.strip().upper()
+    # accept already-suffixed names
+    if u.endswith("_CELL") or u.endswith("_POS_CELL") or u.endswith("_NEG_CELL"):
+        return u
+    if u.startswith("CASH") or u.startswith("NUM") or u.startswith("PCT"):
+        return f"{u}_CELL"
+    return "CASH0_CELL"
 
-    def add_item(name, typ, text):
-        itm = config.ConfigItem(name=name, type=typ)
-        itm.addText(text)
-        table_entry.addElement(itm)
-
-    # Freeze columns: first 3 columns (A..C)
-    add_item("HorizontalSplitMode", "short", "2")          # 2 = split/freeze
-    add_item("HorizontalSplitPosition", "int", "3")        # freeze columns A..C
-
-    # Freeze rows: top 4 rows
-    add_item("VerticalSplitMode", "short", "2")            # 2 = split/freeze
-    add_item("VerticalSplitPosition", "int", freeze_row_index)          # freeze rows 1..4
-
-    # Keep initial view at top-left; don't force the cursor into another pane
-    add_item("ActiveSplitRange", "short", "2")             # keep focus on left/bottom pane
-
-    tables.addElement(table_entry)
-    view.addElement(tables)
-    views.addElement(view)
-    view_settings.addElement(views)
-    doc.settings.addElement(view_settings)
+def freeze_first_rows(doc: Document, table_name: str, freeze_row_index: int = 4):
+    """
+    No-op in this migration step.
+    TODO: Reintroduce via settings.xml manipulation in a follow-up.
+    """
+    return
 
 def cols_for_year_block(month_count: int, year_index: int) -> tuple[int, int]:
-    """
-    Column indices within a row for the given year block, zero-based, counting cells created in order.
-    We reserve columns A,B,C at the start of each row, so the first month is D.
-    start: index of first month cell for the year block
-    totals: index of the totals cell for the year block
-    """
     start = 3 + year_index * (month_count + 1)
     totals = start + month_count
     return start, totals
 
-def render_summary_after_categories(table: Table,
+class SheetBuilder:
+    """
+    Tracks rows appended to compute 1-based row indices for formulas.
+    """
+    def __init__(self, name: str):
+        self.table = Table(name=name)
+        self._row_index = 0
+
+    def append_row(self, row: Row):
+        self.table.append(row)
+        self._row_index += 1
+
+    def current_row_index(self) -> int:
+        return self._row_index
+
+def render_summary_after_categories(sb: SheetBuilder,
                                     repo,
                                     res: ResourceManager,
                                     years,
                                     months,
                                     categories: list,
-                                    header_style,
-                                    total_style,
                                     totals_row_by_category: dict[str, int] | None = None):
     if not categories or len(categories) < 2:
         return
 
     # Header
-    hdr = TableRow()
-    add_text_cell(hdr, res.t("TextSummary"), header_style)
-    add_text_cell(hdr, "", header_style)
-    hdr.addElement(TableCell())  # C
-    table.addElement(hdr)
+    hdr = Row()
+    add_text_cell(hdr, res.t("TextSummary"))
+    add_text_cell(hdr, "")
+    hdr.append(Cell())  # C
+    sb.append_row(hdr)
 
     firstCol = 4
     lastCol = firstCol + (len(years) * (len(months) + 1)) - 1
 
-    # Remember the first summary row index for period total calculation
-    start_row_index = len(table.getElementsByType(TableRow)) + 1
+    # First summary row index (for period total)
+    start_row_index = sb.current_row_index() + 1
 
-    # Summary rows: mirror Excel by referencing each category's totals row in the same column
+    # Summary rows
     for cat in categories:
         code = (cat.get("CategoryCode") or "").strip()
         name = cat.get("Category", "") or ""
 
-        r = TableRow()
+        r = Row()
         add_text_cell(r, code)   # A
         add_text_cell(r, name)   # B
-        r.addElement(TableCell())  # C reserved
+        r.append(Cell())  # C reserved
 
         target_row = (totals_row_by_category or {}).get(code, -1)
 
         for col in range(firstCol, lastCol + 1):
             col_letter = _col_letter(col)
             if target_row > 0:
-                add_number_cell(r, style=total_style, formula=f"{col_letter}{target_row}")
+                add_number_cell(r, formula=f"{col_letter}{target_row}")
             else:
-                add_number_cell(r, value=0.0, style=total_style)
+                add_number_cell(r, value=0.0)
 
-        table.addElement(r)
+        sb.append_row(r)
 
     # Period Total row: SUM of the summary rows per column
-    pr = TableRow()
-    add_text_cell(pr, res.t("TextPeriodTotal"), header_style)
-    add_text_cell(pr, "", header_style)
-    pr.addElement(TableCell())
-    end_row_index = len(table.getElementsByType(TableRow)) + 1
+    pr = Row()
+    add_text_cell(pr, res.t("TextPeriodTotal"))
+    add_text_cell(pr, "")
+    pr.append(Cell())
+    end_row_index = sb.current_row_index()
 
     for col in range(firstCol, lastCol + 1):
         col_letter = _col_letter(col)
-        add_number_cell(pr, style=header_style,
-                        formula=f"SUM([.{col_letter}{start_row_index}:.{col_letter}{end_row_index - 1}])")
+        add_number_cell(pr, formula=f"SUM([.{col_letter}{start_row_index}:.{col_letter}{end_row_index}])")
 
-    table.addElement(pr)
+    sb.append_row(pr)
 
-def render_categories_and_summary(table: Table,
+def render_categories_and_summary(sb: SheetBuilder,
                                   repo,
                                   res: ResourceManager,
                                   years,
@@ -197,32 +206,27 @@ def render_categories_and_summary(table: Table,
                                   include_active: bool,
                                   include_orderbook: bool,
                                   include_tax_accruals: bool,
-                                  header_style,
-                                  total_style,
-                                  data_style,
                                   totals_row_by_category: Optional[dict[str, int]] = None):
-    table.addElement(TableRow())
+    sb.append_row(Row())
     categories = repo.get_categories(cash_type)
-
-    row_counter = len(table.getElementsByType(TableRow))  # current count
 
     for cat in categories:
         # Category name row
-        cat_row = TableRow()
-        add_text_cell(cat_row, cat.get("Category",""), header_style)
-        add_text_cell(cat_row, "", header_style)
-        cat_row.addElement(TableCell())
-        table.addElement(cat_row)
-        row_counter += 1
+        cat_row = Row()
+        add_text_cell(cat_row, cat.get("Category",""))
+        add_text_cell(cat_row, "")
+        cat_row.append(Cell())
+        sb.append_row(cat_row)
 
         codes = repo.get_cash_codes(cat.get("CategoryCode",""))
 
         for code in codes:
-            r = TableRow()
+            r = Row()
             add_text_cell(r, code.get("CashCode",""))
             add_text_cell(r, code.get("CashDescription",""))
-            r.addElement(TableCell())
-            cur_row_index = row_counter + 1
+            r.append(Cell())
+            # Correct current row index for formulas (avoid drift)
+            cur_row_index = sb.current_row_index() + 1
 
             for y_idx, y in enumerate(years):
                 year_num = int(y.get("YearNumber"))
@@ -234,27 +238,26 @@ def render_categories_and_summary(table: Table,
                 # Month cells
                 for m in months:
                     v = mm.get(int(m.get("MonthNumber")), 0.0)
-                    add_number_cell(r, value=v, style=data_style)
+                    add_number_cell(r, value=v)
 
                 # Year total formula: SUM of that year's months
                 start_col = 4 + (y_idx * (len(months) + 1))
                 end_col = start_col + len(months) - 1
                 start_letter = _col_letter(start_col)
                 end_letter = _col_letter(end_col)
-                add_number_cell(r, style=total_style,
-                                formula=f"SUM([.{start_letter}{cur_row_index}:.{end_letter}{cur_row_index}])")
+                add_number_cell(r, formula=f"SUM([.{start_letter}{cur_row_index}:.{end_letter}{cur_row_index}])")
 
-            table.addElement(r)
-            row_counter += 1
+            sb.append_row(r)
 
         # Category totals row: SUM down each period column, apply polarity like Excel
-        tot = TableRow()
-        add_text_cell(tot, res.t("TextTotals"), total_style)
-        add_text_cell(tot, "", total_style)
-        # Column C marker for summary lookups
+        tot = Row()
+        add_text_cell(tot, res.t("TextTotals"))
+        add_text_cell(tot, "")
+        # Column C marker (not relied upon programmatically)
         cat_code = (cat.get("CategoryCode","") or "").strip()
-        add_number_cell(tot, style=total_style, formula=f"\"{cat_code}\"", display_text="")
-        cur_row_index = row_counter + 1
+        add_number_cell(tot, formula=f"\"{cat_code}\"", display_text="")
+        # Correct index for totals row
+        cur_row_index = sb.current_row_index() + 1
 
         # Determine polarity factor: 0 => multiply by -1, 1 or others => as-is
         cash_polarity = cat.get("CashPolarityCode")
@@ -264,69 +267,60 @@ def render_categories_and_summary(table: Table,
         for i in range(total_cols):
             col = 4 + i
             col_letter = _col_letter(col)
+            # Sum the block of cash code rows just appended
+            # We can compute the number of codes per category from 'codes'
             first_code_row = cur_row_index - len(codes)
             last_code_row = cur_row_index - 1
             base_sum = f"SUM([.{col_letter}{first_code_row}:.{col_letter}{last_code_row}])"
             if factor == -1:
-                add_number_cell(tot, style=total_style, formula=f"{base_sum}*-1")
+                add_number_cell(tot, formula=f"{base_sum}*-1")
             else:
-                add_number_cell(tot, style=total_style, formula=base_sum)
+                add_number_cell(tot, formula=base_sum)
 
-        table.addElement(tot)
+        sb.append_row(tot)
+        sb.append_row(Row())
         if totals_row_by_category is not None and cat_code:
             totals_row_by_category[cat_code] = cur_row_index
 
-        row_counter += 1        
-
-def render_summary_totals_block(table: Table, repo, res: ResourceManager,
+def render_summary_totals_block(sb: SheetBuilder, repo, res: ResourceManager,
                                 cash_type: Union[CashType, int],
-                                header_style,
                                 totals_row_by_category: Optional[dict[str, int]] = None):
-    """
-    Render totals block header and codes, aligned with A,B,C then months.
-    Also places a code marker in column C and optionally records the row index per total code.
-    """
     totals = repo.get_categories_by_type(cash_type, "Total") if hasattr(repo, "get_categories_by_type") else []
     if not totals or len(totals) < 2:
         return
-    table.addElement(TableRow())
+    sb.append_row(Row())
 
-    hdr = TableRow()
+    hdr = Row()
     heading = f"{totals[0].get('CashType','')} {res.t('TextTotals')}".strip()
-    add_text_cell(hdr, heading, header_style)
-    add_text_cell(hdr, "", header_style)
-    hdr.addElement(TableCell())
-    table.addElement(hdr)
+    add_text_cell(hdr, heading)
+    add_text_cell(hdr, "")
+    hdr.append(Cell())
+    sb.append_row(hdr)
 
     for t in totals:
-        r = TableRow()
+        r = Row()
         code = (t.get("CategoryCode", "") or "").strip()
         desc = t.get("Category", "") or ""
         add_text_cell(r, code)                 # A
         add_text_cell(r, desc)                 # B
         # C: marker equals code for lookup
-        add_number_cell(r, formula=f"\"{code}\"", display_text="", style=None)
+        add_number_cell(r, formula=f"\"{code}\"", display_text="")
         # record row index if requested
         if totals_row_by_category is not None and code:
-            row_index = len(table.getElementsByType(TableRow)) + 1
-            table.addElement(r)
+            row_index = sb.current_row_index() + 1
+            sb.append_row(r)
             totals_row_by_category[code] = row_index
         else:
-            table.addElement(r)
+            sb.append_row(r)
 
-def render_totals_formula(table: Table, repo, res: ResourceManager, years=None, months=None,
-                          header_style=None, total_style=None, data_style=None,
+def render_totals_formula(sb: SheetBuilder, repo, res: ResourceManager, years=None, months=None,
                           totals_row_by_category: Optional[dict[str, int]] = None):
-    """
-    Totals: A=CategoryCode, B=Category, C=CategoryCode marker; then per-period formulas.
-    Month columns use data_style; annual totals use total_style.
-    """
-    table.addElement(TableRow())
-    hdr = TableRow()
-    add_text_cell(hdr, res.t("TextTotals"), header_style)
-    add_text_cell(hdr, "", header_style)
-    hdr.addElement(TableCell())
-    table.addElement(hdr)
+    sb.append_row(Row())
+    hdr = Row()
+    add_text_cell(hdr, res.t("TextTotals"))
+    add_text_cell(hdr, "")
+    hdr.append(Cell())
+    sb.append_row(hdr)
 
     if not hasattr(repo, "get_category_totals") or not hasattr(repo, "get_category_total_codes"):
         return
@@ -348,26 +342,21 @@ def render_totals_formula(table: Table, repo, res: ResourceManager, years=None, 
         if not code:
             continue
 
-        r = TableRow()
+        r = Row()
         add_text_cell(r, code)         # A: CategoryCode
         add_text_cell(r, desc)         # B: Category
-        add_number_cell(r, style=total_style, formula=f"\"{code}\"", display_text="")  # C marker
+        add_number_cell(r, formula=f"\"{code}\"", display_text="")  # C marker
 
-        # Register this total row so expressions like [Gross Profit]=001 resolve (e.g., D97)
-        row_index = len(table.getElementsByType(TableRow)) + 1
+        # Register row for expressions block
+        row_index = sb.current_row_index() + 1
         if totals_row_by_category is not None:
             totals_row_by_category[code] = row_index
 
-        # Build per-column formulas; can reference both categories and other totals
         sum_codes_rows = repo.get_category_total_codes(code) or []
         src_codes = [row.get("SourceCategoryCode", row.get("CategoryCode", "")) for row in sum_codes_rows if row]
 
         for col in range(first_col, last_col + 1):
             col_letter = _col_letter(col)
-            zero_based = col - first_col
-            is_year_total_col = (month_count > 0) and ((zero_based + 1) % (month_count + 1) == 0)
-            style_for_cell = total_style if is_year_total_col else data_style
-
             terms = []
             for sc in src_codes:
                 sc = (sc or "").strip()
@@ -375,99 +364,30 @@ def render_totals_formula(table: Table, repo, res: ResourceManager, years=None, 
                     terms.append(f"{col_letter}{totals_row_by_category[sc]}")
 
             if terms:
-                add_number_cell(r, style=style_for_cell, formula="+".join(terms))
+                add_number_cell(r, formula="+".join(terms))
             else:
-                add_number_cell(r, value=0.0, style=style_for_cell)
+                add_number_cell(r, value=0.0)
 
-        table.addElement(r)
+        sb.append_row(r)
 
-# Cache for format-driven styles
-_format_style_cache: dict[str, Style] = {}
-
-def get_style_for_format(doc, fmt: str) -> Optional[Style]:
-    """
-    Create or retrieve an ODF style for the given Excel-like format string.
-    Supported:
-      - '%'                      -> PercentageStyle with 0 dp
-      - '0', '0.0', '0.00', ...  -> NumberStyle with matching dp
-      - '0%', '0.0%', '0.00%'    -> PercentageStyle with matching dp
-    Returns a table-cell Style bound to the number style, or None if not supported.
-    """
-    key = (fmt or "").strip()
-    if not key:
-        return None
-    if key in _format_style_cache:
-        return _format_style_cache[key]
-
-    from odf.number import NumberStyle, Number, PercentageStyle
-    from odf.style import Style, TableCellProperties
-
-    try:
-        if key.endswith("%"):
-            dp = 0
-            base = key[:-1]
-            if "." in base:
-                dp = len(base.split(".")[1])
-            num = PercentageStyle(name=f"FmtPct_{len(_format_style_cache)}")
-            num.addElement(Number(decimalplaces=dp, minintegerdigits=1))
-            doc.automaticstyles.addElement(num)
-            cell = Style(name=f"CellPct_{len(_format_style_cache)}", family="table-cell", datastylename=num.getAttribute("name"))
-            cell.addElement(TableCellProperties())
-            doc.automaticstyles.addElement(cell)
-            _format_style_cache[key] = cell
-            return cell
-
-        if key == "%":
-            num = PercentageStyle(name=f"FmtPct_{len(_format_style_cache)}")
-            num.addElement(Number(decimalplaces=0, minintegerdigits=1))
-            doc.automaticstyles.addElement(num)
-            cell = Style(name=f"CellPct_{len(_format_style_cache)}", family="table-cell", datastylename=num.getAttribute("name"))
-            cell.addElement(TableCellProperties())
-            doc.automaticstyles.addElement(cell)
-            _format_style_cache[key] = cell
-            return cell
-
-        if key.startswith("0"):
-            dp = 0
-            if "." in key:
-                dp = len(key.split(".")[1])
-            num = NumberStyle(name=f"FmtNum_{len(_format_style_cache)}")
-            num.addElement(Number(decimalplaces=dp, minintegerdigits=1))
-            doc.automaticstyles.addElement(num)
-            cell = Style(name=f"CellNum_{len(_format_style_cache)}", family="table-cell", datastylename=num.getAttribute("name"))
-            cell.addElement(TableCellProperties())
-            doc.automaticstyles.addElement(cell)
-            _format_style_cache[key] = cell
-            return cell
-
-        return None
-    except Exception:
-        return None
-
-def render_expressions(table: Table,
-                       repo,
-                       res: ResourceManager,
-                       years=None,
-                       months=None,
-                       header_style=None,
-                       total_style=None,
-                       data_style=None,
-                       totals_row_by_category: Optional[dict[str, int]] = None,
-                       doc=None):
+def render_expressions(sb: SheetBuilder,
+                repo,
+                res: ResourceManager,
+                years=None,
+                months=None,
+                totals_row_by_category: Optional[dict[str, int]] = None):
     """
     Expressions:
     - A: Category (name)
     - B: blank
     - C: CategoryCode marker (if resolvable)
     - D..: formulas referencing totals rows in the same column.
-    Applies per-row cell style derived from the expression's Format string.
     """
-    table.addElement(TableRow())
-    hdr = TableRow()
-    add_text_cell(hdr, res.t("TextAnalysis"), header_style)
-    add_text_cell(hdr, "", header_style)
-    hdr.addElement(TableCell())
-    table.addElement(hdr)
+    hdr = Row()
+    add_text_cell(hdr, res.t("TextAnalysis"))
+    add_text_cell(hdr, "")
+    hdr.append(Cell())
+    sb.append_row(hdr)
 
     if not hasattr(repo, "get_category_expressions"):
         return
@@ -498,10 +418,14 @@ def render_expressions(table: Table,
         return f.replace(',', ';')
 
     for expr in exprs:
-        r = TableRow()
+        r = Row()
         category_name = (expr.get("Category") or "").strip()
         template = (expr.get("Expression") or "").strip()
-        fmt = (expr.get("Format") or "").strip()
+
+        # Determine style override from Format when SyntaxTypeCode is Libre or Both
+        syntax = (expr.get("SyntaxTypeCode") or "").strip().lower()
+        fmt = expr.get("Format") or expr.get("TemplateCode")  # support alt field names
+        override_style = _to_semantic_cell_style(fmt) if syntax in ("libre", "both") else "CASH0_CELL"
 
         # A, B
         add_text_cell(r, category_name)
@@ -514,11 +438,11 @@ def render_expressions(table: Table,
         if not expr_code:
             expr_code = totals_by_name.get(category_name, "")
         if expr_code:
-            add_number_cell(r, style=total_style, formula=f"\"{expr_code}\"", display_text="")
+            add_number_cell(r, formula=f"\"{expr_code}\"", display_text="")
         else:
-            r.addElement(TableCell())
+            r.append(Cell())
 
-        # Extract [Name] tokens in order
+        # Extract [Name] tokens
         tokens: list[str] = []
         i = 0
         while i < len(template):
@@ -531,14 +455,15 @@ def render_expressions(table: Table,
                 tokens.append(token)
             i = rb + 1
 
-        # Map names -> codes (cash categories via repo lookup, totals via totals_by_name)
+        # Map names -> codes
+        totals_by_name_local = totals_by_name
         name_to_code: dict[str, str] = {}
         for name in tokens:
             code = ""
             if hasattr(repo, "get_category_code_from_name"):
                 code = (repo.get_category_code_from_name(name) or "").strip()
             if not code:
-                code = totals_by_name.get(name, "")
+                code = totals_by_name_local.get(name, "")
             if not code:
                 code = name
             name_to_code[name] = code
@@ -549,56 +474,27 @@ def render_expressions(table: Table,
             normalized = normalized.replace(f"[{name}]", f"[{name_to_code[name]}]")
         normalized = normalize_for_calc(normalized)
 
-        errors = []
-
-        # Per-expression cell style derived from format string
-        # If fmt = "0%", "0.00%", etc., create Percentage style; "0", "0.00", etc., create Number style.
-        expr_cell_style = get_style_for_format(doc, fmt) if doc is not None else None
-        if fmt and expr_cell_style is None:
-            # Unsupported format: we still render values with default numeric style
-            errors.append(f"Unsupported format: {fmt}")
-        cell_style = expr_cell_style or data_style
-
+        # Write per-column formulas with style override
         for col in range(first_col, last_col + 1):
             col_letter = _col_letter(col)
             formula = normalized
-
-            # Replace each [Code] with same-column A1 reference
             for code in {c for c in name_to_code.values()}:
                 row_index = (totals_row_by_category or {}).get(code, -1)
                 if row_index <= 0:
-                    errors.append(f"Reference not found: [{code}]")
                     formula = formula.replace(f"[{code}]", "0")
                 else:
                     formula = formula.replace(f"[{code}]", f"{col_letter}{row_index}")
+            add_number_cell(r, formula=formula, style=override_style)
 
-            try:
-                add_number_cell(r, style=cell_style, formula=formula)
-            except Exception as ex:
-                errors.append(f"Calc formula error: {str(ex)}")
-                add_number_cell(r, value=0.0, style=cell_style)
+        sb.append_row(r)
 
-        table.addElement(r)
-
-        # Report status (optional)
-        if hasattr(repo, "set_category_expression_status"):
-            is_error = len(errors) > 0
-            msg = "; ".join(sorted(set(errors))) if is_error else None
-            try:
-                repo.set_category_expression_status(expr_code or category_name, is_error, msg)
-            except Exception:
-                pass
-
-def render_vat_recurrence_totals(table, repo, res, years, months, include_active_periods, include_tax_accruals, header_style, data_style, total_style):
-    """
-    VAT Due by recurrence periods. Align headers A,B,C; add spacer after section.
-    """
-    hdr = TableRow()
+def render_vat_recurrence_totals(sb: SheetBuilder, repo, res, years, months, include_active_periods, include_tax_accruals):
+    hdr = Row()
     vat_type = (repo.get_vat_recurrence_type() or "").upper()
-    add_text_cell(hdr, f"{res.t('TextVatDueTitle')} {vat_type}".upper(), header_style)
-    add_text_cell(hdr, "", header_style)
-    hdr.addElement(TableCell())
-    table.addElement(hdr)
+    add_text_cell(hdr, f"{res.t('TextVatDueTitle')} {vat_type}".upper())
+    add_text_cell(hdr, "")
+    hdr.append(Cell())
+    sb.append_row(hdr)
 
     labels = [
         res.t("TextVatHomeSales"),
@@ -626,10 +522,10 @@ def render_vat_recurrence_totals(table, repo, res, years, months, include_active
             accruals_by_year.setdefault(y, []).append(a)
 
     for li, label in enumerate(labels):
-        r = TableRow()
-        add_text_cell(r, label.upper(), header_style if li in (0, 9) else data_style)
-        add_text_cell(r, "", data_style)
-        r.addElement(TableCell())
+        r = Row()
+        add_text_cell(r, label.upper())
+        add_text_cell(r, "")
+        r.append(Cell())
 
         for y in years:
             ynum = int(y.get("YearNumber"))
@@ -665,23 +561,19 @@ def render_vat_recurrence_totals(table, repo, res, years, months, include_active
                     period_vals[idx] += add_val
 
             for v in period_vals:
-                add_number_cell(r, v, data_style)
-            add_number_cell(r, sum(period_vals), total_style)
+                add_number_cell(r, v)
+            add_number_cell(r, sum(period_vals))
 
-        table.addElement(r)
+        sb.append_row(r)
 
-    # Spacer after VAT recurrence section
-    table.addElement(TableRow())
+    sb.append_row(Row())  # spacer
 
-def render_vat_period_totals(table, repo, res, years, months, include_active_periods, include_tax_accruals, header_style, data_style, total_style):
-    """
-    VAT monthly totals; align headers A,B,C; add spacer after section.
-    """
-    hdr = TableRow()
-    add_text_cell(hdr, f"{res.t('TextVatDueTitle')} {res.t('TextTotals')}".upper(), header_style)
-    add_text_cell(hdr, "", header_style)
-    hdr.addElement(TableCell())
-    table.addElement(hdr)
+def render_vat_period_totals(sb: SheetBuilder, repo, res, years, months, include_active_periods, include_tax_accruals):
+    hdr = Row()
+    add_text_cell(hdr, f"{res.t('TextVatDueTitle')} {res.t('TextTotals')}".upper())
+    add_text_cell(hdr, "")
+    hdr.append(Cell())
+    sb.append_row(hdr)
 
     labels = [
         res.t("TextVatHomeSales"),
@@ -708,10 +600,10 @@ def render_vat_period_totals(table, repo, res, years, months, include_active_per
             accruals_by_year.setdefault(y, []).append(a)
 
     for li, label in enumerate(labels):
-        r = TableRow()
-        add_text_cell(r, label.upper(), header_style if li == len(labels) - 1 else data_style)
-        add_text_cell(r, "", data_style)
-        r.addElement(TableCell())
+        r = Row()
+        add_text_cell(r, label.upper() if li == len(labels) - 1 else label.upper())
+        add_text_cell(r, "")
+        r.append(Cell())
 
         for y in years:
             ynum = int(y.get("YearNumber"))
@@ -753,32 +645,28 @@ def render_vat_period_totals(table, repo, res, years, months, include_active_per
                     month_vals[idx] += add_val
 
             for v in month_vals:
-                add_number_cell(r, v, data_style)
-            add_number_cell(r, sum(month_vals), total_style)
+                add_number_cell(r, v)
+            add_number_cell(r, sum(month_vals))
 
-        table.addElement(r)
+        sb.append_row(r)
 
-    # Spacer after VAT period totals
-    table.addElement(TableRow())
+    sb.append_row(Row())  # spacer
 
-def render_bank_balances(table, repo, res, years, months, header_style, data_style, total_style):
-    """
-    Bank balances section header alignment (A,B,C), values unchanged.
-    """
-    table.addElement(TableRow())
-    hr = TableRow()
-    add_text_cell(hr, res.t("TextClosingBalances").upper(), header_style)
-    add_text_cell(hr, "", header_style)
-    hr.addElement(TableCell())
-    table.addElement(hr)
+def render_bank_balances(sb: SheetBuilder, repo, res, years, months):
+    sb.append_row(Row())
+    hr = Row()
+    add_text_cell(hr, res.t("TextClosingBalances").upper())
+    add_text_cell(hr, "")
+    hr.append(Cell())
+    sb.append_row(hr)
 
     accounts = repo.get_bank_accounts()
     if not accounts:
-        r = TableRow()
-        add_text_cell(r, "(no bank accounts)", header_style)
-        add_text_cell(r, "", header_style)
-        r.addElement(TableCell())
-        table.addElement(r)
+        r = Row()
+        add_text_cell(r, "(no bank accounts)")
+        add_text_cell(r, "")
+        r.append(Cell())
+        sb.append_row(r)
         return
 
     cols_per_year = len(months) + 1
@@ -786,10 +674,10 @@ def render_bank_balances(table, repo, res, years, months, header_style, data_sty
     company_totals = [0.0] * total_cols
 
     for acct in accounts:
-        r = TableRow()
-        add_text_cell(r, acct.get("AccountCode", ""), data_style)
-        add_text_cell(r, acct.get("AccountName", ""), data_style)
-        r.addElement(TableCell())
+        r = Row()
+        add_text_cell(r, acct.get("AccountCode", ""))
+        add_text_cell(r, acct.get("AccountName", ""))
+        r.append(Cell())
 
         balances = repo.get_bank_balances(acct.get("AccountCode", ""))
         bal_map = {(int(b["YearNumber"]), int(b["MonthNumber"])): float(b["Balance"] or 0) for b in balances}
@@ -799,25 +687,27 @@ def render_bank_balances(table, repo, res, years, months, header_style, data_sty
             last_val = None
             for m_idx, m in enumerate(months):
                 v = bal_map.get((year_num, int(m.get("MonthNumber"))), 0.0)
-                add_number_cell(r, v, data_style)
+                add_number_cell(r, v)
                 company_totals[y_idx * cols_per_year + m_idx] += v
                 last_val = v
             carry = bal_map.get((year_num, 12), last_val if last_val is not None else 0.0)
-            add_number_cell(r, carry, total_style)
+            add_number_cell(r, carry)
             company_totals[y_idx * cols_per_year + len(months)] += carry
 
-        table.addElement(r)
+        sb.append_row(r)
 
-    tr = TableRow()
-    add_text_cell(tr, res.t("TextCompanyBalance").upper(), header_style)
-    add_text_cell(tr, "", header_style)
-    tr.addElement(TableCell())
+    tr = Row()
+    add_text_cell(tr, res.t("TextCompanyBalance").upper())
+    add_text_cell(tr, "")
+    tr.append(Cell())
     for val in company_totals:
-        add_number_cell(tr, val, total_style)
-    table.addElement(tr)
+        add_number_cell(tr, val)
+    sb.append_row(tr)
 
-def render_balance_sheet(table, repo, res, years, months, header_style, data_style, total_style):
-    hr = TableRow(); add_text_cell(hr, res.t("TextBalanceSheet").upper(), header_style); table.addElement(hr)
+def render_balance_sheet(sb: SheetBuilder, repo, res, years, months):
+    hr = Row()
+    add_text_cell(hr, res.t("TextBalanceSheet").upper())
+    sb.append_row(hr)
     entries = repo.get_balance_sheet()
     if not entries: return
 
@@ -831,13 +721,12 @@ def render_balance_sheet(table, repo, res, years, months, header_style, data_sty
         groups[key][(int(e['YearNumber']), int(e['MonthNumber']))] = float(e['Balance'] or 0)
 
     for code, name, key in order:
-        r = TableRow()
-        add_text_cell(r, code, data_style)      # A
-        add_text_cell(r, name, data_style)      # B
-        r.addElement(TableCell())               # C reserved so months start at D
+        r = Row()
+        add_text_cell(r, code)      # A
+        add_text_cell(r, name)      # B
+        r.append(Cell())            # C reserved so months start at D
 
-        # Write months and year total per year (numeric cells; zero-dp display via column styles)
-        cur_row_index = len(table.getElementsByType(TableRow)) + 1
+        cur_row_index = sb.current_row_index() + 1
 
         for y_idx, y in enumerate(years):
             year_num = int(y.get("YearNumber"))
@@ -848,40 +737,76 @@ def render_balance_sheet(table, repo, res, years, months, header_style, data_sty
             for m_idx, m in enumerate(months):
                 mm = int(m.get("MonthNumber"))
                 v = groups[key].get((year_num, mm))
-                add_number_cell(r, value=(v or 0.0), style=data_style)
+                add_number_cell(r, value=(v or 0.0))
                 if v is not None:
                     last_non_empty_col_letter = _col_letter(year_start_col + m_idx)
 
             # year total: reference last non-empty month cell if any, else 0
             if last_non_empty_col_letter:
-                add_number_cell(r, style=total_style,
-                                formula=f"{last_non_empty_col_letter}{cur_row_index}",
-                                display_text="")
+                add_number_cell(r, formula=f"{last_non_empty_col_letter}{cur_row_index}", display_text="")
             else:
-                add_number_cell(r, value=0.0, style=total_style)
+                add_number_cell(r, value=0.0)
 
-        table.addElement(r)
+        sb.append_row(r)
 
-    cap = TableRow()
-    add_text_cell(cap, res.t("TextCapital").upper(), header_style)
-    add_text_cell(cap, "", header_style)
-    cap.addElement(TableCell())  # C reserved so totals begin at D
+    cap = Row()
+    add_text_cell(cap, res.t("TextCapital").upper())
+    add_text_cell(cap, "")
+    cap.append(Cell())  # C reserved so totals begin at D
 
     # Capital per column: SUM of asset rows in this section
-    first_asset_row = len(table.getElementsByType(TableRow)) - len(order) + 1
-    last_row_index = len(table.getElementsByType(TableRow)) + 1
+    first_asset_row = sb.current_row_index() - len(order) + 1
+    last_row_index = sb.current_row_index() + 1
     for col_offset in range(len(years) * (len(months) + 1)):
         col = 4 + col_offset
         letter = _col_letter(col)
-        add_number_cell(cap, style=total_style,
-                        formula=f"SUM([.{letter}{first_asset_row}:.{letter}{last_row_index - 1}])")
-    table.addElement(cap)
+        add_number_cell(cap, formula=f"SUM([.{letter}{first_asset_row}:.{letter}{last_row_index - 1}])")
+    sb.append_row(cap)
+
+def _parse_locale_tuple(locale_str: str) -> tuple[str, str]:
+    s = (locale_str or "").strip()
+    if not s:
+        return ("en", "GB")
+
+    # Normalize common aliases before splitting
+    alias = {
+        "france": "fr-FR",
+        "germany": "de-DE",
+        "spain": "es-ES",
+        "united kingdom": "en-GB",
+        "uk": "en-GB"
+    }
+    s = alias.get(s.lower(), s)
+
+    s = s.replace("_", "-")
+    parts = s.split("-", 1)
+
+    if len(parts) == 1:
+        lang = parts[0].lower()
+        # Default country per language when none provided
+        defaults = {
+            "en": "GB",
+            "fr": "FR",
+            "de": "DE",
+            "es": "ES",
+        }
+        country = defaults.get(lang, lang.upper())
+        return (lang, country)
+
+    # If a country was explicitly provided, respect it
+    lang = parts[0].lower()
+    country = parts[1].upper()
+    return (lang, country)
 
 def generate_ods(payload: dict) -> tuple[str, bytes]:
     params = payload.get("Params") or payload.get("params") or {}
     conn = payload.get("SqlConnection") or payload.get("sqlConnection") or payload.get("connectionString")
     locale = params.get("locale") or "en-GB"
-    res = ResourceManager(locale)
+    # Normalize locale once and reuse
+    lang, country = _parse_locale_tuple(locale)
+    normalized_locale = f"{lang}-{country}"
+
+    res = ResourceManager(normalized_locale)
     repo = create_repo(conn, params)
 
     include_active = params.get("includeActivePeriods") == "true"
@@ -896,145 +821,120 @@ def generate_ods(payload: dict) -> tuple[str, bytes]:
     months = repo.get_months()
     company_name = repo.get_company_name()
 
-    doc = OpenDocumentSpreadsheet()
-    header_style, total_style, data_style = build_styles(doc)
-
-    # Track totals rows for categories (CategoryCode -> row index)
-    totals_row_by_category: dict[str, int] = {}
-
-    # Zero-dp number style and a table-cell style bound to it
-    from odf.number import NumberStyle, Number
-    from odf.style import Style, TableCellProperties, TableColumnProperties
-    int0 = NumberStyle(name="Int0")
-    int0.addElement(Number(decimalplaces=0, minintegerdigits=1))
-    doc.automaticstyles.addElement(int0)
-
-    zero_dp_cell = Style(name="ZeroDpCell", family="table-cell", datastylename="Int0")
-    zero_dp_cell.addElement(TableCellProperties())
-    doc.automaticstyles.addElement(zero_dp_cell)
-
     table_name = "Cash Flow"
-    table = Table(name=table_name)
+    sb = SheetBuilder(name=table_name)
 
-    # Define columns: A (Code), B (Name), C hidden
-    from odf.table import TableColumn
-    table.addElement(TableColumn())                           # A
-    table.addElement(TableColumn())                           # B
-    table.addElement(TableColumn(visibility="collapse"))      # C hidden
-
-    # Period columns (D -> ...): apply zero-dp display via column default cell style
-    cols_per_year = (len(months) + 1) if years else 0
-    period_cols = len(years) * cols_per_year
-    for _ in range(period_cols):
-        table.addElement(TableColumn(defaultcellstylename=zero_dp_cell))
+    # Columns: A (Code), B (Name), C hidden (we just create the columns; visibility skip for now)
+    sb.table.append(Column())  # A
+    sb.table.append(Column())  # B
+    sb.table.append(Column())  # C (was hidden in odfpy; can be handled later if needed)
 
     # Row 1: Title
-    tr = TableRow()
-    add_text_cell(tr, res.t("TextStatementTitle").format(active.get("MonthName",""), active.get("Description","")), header_style)
-    add_text_cell(tr, "", header_style)
-    tr.addElement(TableCell())
-    table.addElement(tr)
+    tr = Row()
+    add_text_cell(tr, res.t("TextStatementTitle").format(active.get("MonthName",""), active.get("Description","")))
+    add_text_cell(tr, "")
+    tr.append(Cell())
+    sb.append_row(tr)
 
     # Row 2: Company
-    tr = TableRow()
-    add_text_cell(tr, company_name or "", header_style)
-    add_text_cell(tr, "", header_style)
-    tr.addElement(TableCell())
-    table.addElement(tr)
+    tr = Row()
+    add_text_cell(tr, company_name or "")
+    add_text_cell(tr, "")
+    tr.append(Cell())
+    sb.append_row(tr)
 
     # Row 3: Year labels
-    year_row = TableRow()
-    add_text_cell(year_row, res.t("TextDate"), header_style)
-    add_text_cell(year_row, datetime.now().strftime("%d %b %H:%M:%S"), header_style)
-    year_row.addElement(TableCell())  # C
+    year_row = Row()
+    add_text_cell(year_row, res.t("TextDate"))
+    add_text_cell(year_row, datetime.now().strftime("%d %b %H:%M:%S"))
+    year_row.append(Cell())  # C
     for y in years:
         desc = y.get("Description") or str(y.get("YearNumber"))
         status = y.get("CashStatus") or ""
-        add_text_cell(year_row, f"{desc} ({status})" if status else desc, header_style)
+        add_text_cell(year_row, f"{desc} ({status})" if status else desc)
         for _ in range(len(months) - 1):
-            year_row.addElement(TableCell())
-        add_text_cell(year_row, desc, header_style)
-    table.addElement(year_row)
+            year_row.append(Cell())
+        add_text_cell(year_row, desc)
+    sb.append_row(year_row)
 
     # Row 4: Column headers
-    hdr = TableRow()
-    add_text_cell(hdr, res.t("TextCode"), header_style)
-    add_text_cell(hdr, res.t("TextName"), header_style)
-    hdr.addElement(TableCell())
+    hdr = Row()
+    add_text_cell(hdr, res.t("TextCode"))
+    add_text_cell(hdr, res.t("TextName"))
+    hdr.append(Cell())
     for _y in years:
         for m in months:
-            add_text_cell(hdr, str(m.get("MonthName","")), header_style)
-        add_text_cell(hdr, res.t("TextTotals"), header_style)
-    table.addElement(hdr)
+            add_text_cell(hdr, str(m.get("MonthName","")))
+        add_text_cell(hdr, res.t("TextTotals"))
+    sb.append_row(hdr)
 
-    # Sections (with summaries after categories, matching Excel Workbook behavior)
     # Trade categories + summary
-    render_categories_and_summary(table, repo, res, years, months, CashType.Trade,
+    totals_row_by_category: dict[str, int] = {}
+    render_categories_and_summary(sb, repo, res, years, months, CashType.Trade,
                                   include_active, include_orderbook, False,
-                                  header_style, total_style, data_style,
                                   totals_row_by_category)
-    render_summary_after_categories(table, repo, res, years, months,
+    render_summary_after_categories(sb, repo, res, years, months,
                                     repo.get_categories(CashType.Trade),
-                                    header_style, total_style,
                                     totals_row_by_category)
 
     # Money categories + summary
-    render_categories_and_summary(table, repo, res, years, months, CashType.Money,
+    render_categories_and_summary(sb, repo, res, years, months, CashType.Money,
                                   False, False, False,
-                                  header_style, total_style, data_style,
                                   totals_row_by_category)
-    render_summary_after_categories(table, repo, res, years, months,
+    render_summary_after_categories(sb, repo, res, years, months,
                                     repo.get_categories(CashType.Money),
-                                    header_style, total_style,
                                     totals_row_by_category)
 
     # Totals block for Trade
-    render_summary_totals_block(table, repo, res, CashType.Trade, header_style, totals_row_by_category)
+    render_summary_totals_block(sb, repo, res, CashType.Trade, totals_row_by_category)
 
-    # Totals-of-totals formulas (requires totals rows tracked)
-    render_totals_formula(table, repo, res, years, months,
-                          header_style, total_style, data_style,
-                          totals_row_by_category)
+    # Totals-of-totals formulas
+    render_totals_formula(sb, repo, res, years, months, totals_row_by_category)
 
     # Tax categories + summary
-    render_categories_and_summary(table, repo, res, years, months, CashType.Tax,
+    render_categories_and_summary(sb, repo, res, years, months, CashType.Tax,
                                   include_active, False, include_tax_accruals,
-                                  header_style, total_style, data_style,
                                   totals_row_by_category)
-    render_summary_after_categories(table, repo, res, years, months,
+    render_summary_after_categories(sb, repo, res, years, months,
                                     repo.get_categories(CashType.Tax),
-                                    header_style, total_style,
                                     totals_row_by_category)
 
     # Totals block for Tax
-    render_summary_totals_block(table, repo, res, CashType.Tax, header_style, totals_row_by_category)
+    render_summary_totals_block(sb, repo, res, CashType.Tax, totals_row_by_category)
 
     # Expressions
-    render_expressions(table, repo, res, years, months,
-                           header_style, total_style, data_style,
-                           totals_row_by_category, doc=doc)
-
-    # Spacer before optional sections
-    # table.addElement(TableRow())
+    render_expressions(sb, repo, res, years, months, totals_row_by_category)
 
     if include_bank_balances:
-        render_bank_balances(table, repo, res, years, months, header_style, data_style, total_style)
-        table.addElement(TableRow())
+        render_bank_balances(sb, repo, res, years, months)
+        sb.append_row(Row())
 
     if include_vat_details:
-        render_vat_recurrence_totals(table, repo, res, years, months, include_active, include_tax_accruals, header_style, data_style, total_style)
-        render_vat_period_totals(table, repo, res, years, months, include_active, include_tax_accruals, header_style, data_style, total_style)
+        render_vat_recurrence_totals(sb, repo, res, years, months, include_active, include_tax_accruals)
+        render_vat_period_totals(sb, repo, res, years, months, include_active, include_tax_accruals)
 
     if include_balance_sheet:
-        render_balance_sheet(table, repo, res, years, months, header_style, data_style, total_style)
+        render_balance_sheet(sb, repo, res, years, months)
 
-    doc.spreadsheet.addElement(table)
-    freeze_first_rows(doc, table_name, freeze_row_index=4)
+    doc = Document("spreadsheet")
+    doc.body.append(sb.table)
+    
+    _append_add_number_cell_check(doc) # verification via add_number_cell
+
+    freeze_first_rows(doc, table_name, freeze_row_index=4)  # no-op for now
 
     buf = io.BytesIO()
-    doc.save(buf)
+    try:
+        doc.save(buf)
+        content = buf.getvalue()
+    except TypeError:
+        content = doc.save()
+
+    # Apply Style Factory: set locale and strip default artifacts
+    content = apply_styles_bytes(content, locale=(lang, country), strip_defaults=True)
+
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    return f"Cash_Flow_{ts}.ods", buf.getvalue()
+    return f"Cash_Flow_{ts}.ods", content
 
 if __name__ == "__main__":
     if len(sys.argv) >= 2:

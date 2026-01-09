@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ..semantic.naming import StyleKey, parse_style_name, data_style_name_for_cell
 
@@ -39,6 +39,22 @@ class StyleRegistry:
         cell_specs: List[CellStyleSpec] = []
 
         for key in self._keys.values():
+            # Base CASHx_CELL: create POS/NEG variants so injector can build base maps
+            if key.kind == "cash" and key.polarity is None:
+                pos_cell = key.cell_style_name.replace("_CELL", "_POS_CELL")
+                neg_cell = key.cell_style_name.replace("_CELL", "_NEG_CELL")
+                pos_ds = data_style_name_for_cell(pos_cell)
+                neg_ds = data_style_name_for_cell(neg_cell)
+                if pos_ds:
+                    ds = DataStyleSpec(name=pos_ds, kind="number", decimals=key.decimals)
+                    data_specs.setdefault(ds.name, ds)
+                    cell_specs.append(CellStyleSpec(name=pos_cell, data_style_name=ds.name, neg_red=False))
+                if neg_ds:
+                    ds = DataStyleSpec(name=neg_ds, kind="cash_neg", decimals=key.decimals)
+                    data_specs.setdefault(ds.name, ds)
+                    cell_specs.append(CellStyleSpec(name=neg_cell, data_style_name=ds.name, neg_red=True))
+                continue
+
             ds_name = data_style_name_for_cell(key.cell_style_name)
             if not ds_name:
                 continue

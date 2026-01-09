@@ -7,14 +7,17 @@ from .xml_utils import (
 )
 from ..mapping.registry import StyleRegistry, DataStyleSpec, CellStyleSpec
 
-def inject_content_styles(content_xml: bytes, strip_defaults: bool = True) -> bytes:
+def inject_content_styles(content_xml: bytes, strip_defaults: bool = True, lang: str = "en", country: str = "GB") -> bytes:
     parser = ET.XMLParser(remove_blank_text=False)
     root = ET.fromstring(content_xml, parser=parser)
 
     auto = root.find(q(OFFICE_NS, "automatic-styles"))
     if auto is None:
         auto = ET.Element(q(OFFICE_NS, "automatic-styles"))
-        root.insert(0, auto) if len(root) else root.append(auto)
+        if len(root):
+            root.insert(0, auto)
+        else:
+            root.append(auto)
 
     if strip_defaults:
         body = root.find(q(OFFICE_NS, "body"))
@@ -40,26 +43,23 @@ def inject_content_styles(content_xml: bytes, strip_defaults: bool = True) -> by
                 return el
         return None
 
+    def stamp_number_locale(num_el: ET._Element):
+        num_el.set(q(NUMBER_NS, "language"), lang)
+        num_el.set(q(NUMBER_NS, "country"), country)
+
     def ensure_number_ds(spec: DataStyleSpec):
         ds = find_style(NUMBER_NS, "number-style", STYLE_NS, spec.name)
         if ds is None:
             ds = ET.SubElement(auto, q(NUMBER_NS, "number-style"))
             ds.set(q(STYLE_NS, "name"), spec.name)
+        num = ds.find(q(NUMBER_NS, "number"))
+        if num is None:
             num = ET.SubElement(ds, q(NUMBER_NS, "number"))
-            num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
-            num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
-            num.set(q(NUMBER_NS, "min-integer-digits"), "1")
-            num.set(q(NUMBER_NS, "grouping"), "true")
-        else:
-            num = ds.find(q(NUMBER_NS, "number")) or ET.SubElement(ds, q(NUMBER_NS, "number"))
-            if num.get(q(NUMBER_NS, "decimal-places")) is None:
-                num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
-            if num.get(q(NUMBER_NS, "min-decimal-places")) is None:
-                num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
-            if num.get(q(NUMBER_NS, "min-integer-digits")) is None:
-                num.set(q(NUMBER_NS, "min-integer-digits"), "1")
-            if num.get(q(NUMBER_NS, "grouping")) is None:
-                num.set(q(NUMBER_NS, "grouping"), "true")
+        num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
+        num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
+        num.set(q(NUMBER_NS, "min-integer-digits"), "1")
+        num.set(q(NUMBER_NS, "grouping"), "true")
+        stamp_number_locale(num)
         return ds
 
     def ensure_percent_ds(spec: DataStyleSpec):
@@ -67,21 +67,15 @@ def inject_content_styles(content_xml: bytes, strip_defaults: bool = True) -> by
         if ds is None:
             ds = ET.SubElement(auto, q(NUMBER_NS, "percentage-style"))
             ds.set(q(STYLE_NS, "name"), spec.name)
+        num = ds.find(q(NUMBER_NS, "number"))
+        if num is None:
             num = ET.SubElement(ds, q(NUMBER_NS, "number"))
-            num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
-            num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
-            num.set(q(NUMBER_NS, "min-integer-digits"), "1")
+        num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
+        num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
+        num.set(q(NUMBER_NS, "min-integer-digits"), "1")
+        stamp_number_locale(num)
+        if ds.find(q(NUMBER_NS, "text")) is None:
             ET.SubElement(ds, q(NUMBER_NS, "text")).text = "%"
-        else:
-            num = ds.find(q(NUMBER_NS, "number")) or ET.SubElement(ds, q(NUMBER_NS, "number"))
-            if num.get(q(NUMBER_NS, "decimal-places")) is None:
-                num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
-            if num.get(q(NUMBER_NS, "min-decimal-places")) is None:
-                num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
-            if num.get(q(NUMBER_NS, "min-integer-digits")) is None:
-                num.set(q(NUMBER_NS, "min-integer-digits"), "1")
-            if ds.find(q(NUMBER_NS, "text")) is None:
-                ET.SubElement(ds, q(NUMBER_NS, "text")).text = "%"
         return ds
 
     def ensure_cash_neg_ds(spec: DataStyleSpec):
@@ -89,31 +83,22 @@ def inject_content_styles(content_xml: bytes, strip_defaults: bool = True) -> by
         if ds is None:
             ds = ET.SubElement(auto, q(NUMBER_NS, "number-style"))
             ds.set(q(STYLE_NS, "name"), spec.name)
-            ET.SubElement(ds, q(NUMBER_NS, "text")).text = "("
+        # Ensure parentheses and number node
+        has_open = any(e.tag == q(NUMBER_NS, "text") and (e.text or "") == "(" for e in ds)
+        has_close = any(e.tag == q(NUMBER_NS, "text") and (e.text or "") == ")" for e in ds)
+        if not has_open:
+            ds.insert(0, ET.Element(q(NUMBER_NS, "text"))); ds[0].text = "("
+        num = ds.find(q(NUMBER_NS, "number"))
+        if num is None:
             num = ET.SubElement(ds, q(NUMBER_NS, "number"))
-            num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
-            num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
-            num.set(q(NUMBER_NS, "min-integer-digits"), "1")
-            num.set(q(NUMBER_NS, "grouping"), "true")
-            num.set(q(NUMBER_NS, "display-factor"), "-1")
-            ET.SubElement(ds, q(NUMBER_NS, "text")).text = ")"
-        else:
-            num = ds.find(q(NUMBER_NS, "number")) or ET.SubElement(ds, q(NUMBER_NS, "number"))
-            if num.get(q(NUMBER_NS, "decimal-places")) is None:
-                num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
-            if num.get(q(NUMBER_NS, "min-decimal-places")) is None:
-                num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
-            if num.get(q(NUMBER_NS, "min-integer-digits")) is None:
-                num.set(q(NUMBER_NS, "min-integer-digits"), "1")
-            if num.get(q(NUMBER_NS, "grouping")) is None:
-                num.set(q(NUMBER_NS, "grouping"), "true")
-            num.set(q(NUMBER_NS, "display-factor"), "-1")
-            has_open = any(e.tag == q(NUMBER_NS, "text") and (e.text or "") == "(" for e in ds)
-            has_close = any(e.tag == q(NUMBER_NS, "text") and (e.text or "") == ")" for e in ds)
-            if not has_open:
-                ds.insert(0, ET.Element(q(NUMBER_NS, "text"))); ds[0].text = "("
-            if not has_close:
-                ds.append(ET.Element(q(NUMBER_NS, "text"))); ds[-1].text = ")"
+        num.set(q(NUMBER_NS, "decimal-places"), str(spec.decimals))
+        num.set(q(NUMBER_NS, "min-decimal-places"), str(spec.decimals))
+        num.set(q(NUMBER_NS, "min-integer-digits"), "1")
+        num.set(q(NUMBER_NS, "grouping"), "true")
+        num.set(q(NUMBER_NS, "display-factor"), "-1")
+        stamp_number_locale(num)
+        if not has_close:
+            ds.append(ET.Element(q(NUMBER_NS, "text"))); ds[-1].text = ")"
         return ds
 
     def ensure_cell_style(spec: CellStyleSpec):
@@ -126,15 +111,13 @@ def inject_content_styles(content_xml: bytes, strip_defaults: bool = True) -> by
             ET.SubElement(cs, q(STYLE_NS, "table-cell-properties"))
         cs.set(q(STYLE_NS, "data-style-name"), spec.data_style_name)
         if spec.neg_red:
-            tp = cs.find(q(STYLE_NS, "text-properties")) or ET.SubElement(cs, q(STYLE_NS, "text-properties"))
+            tp = cs.find(q(STYLE_NS, "text-properties"))
+            if tp is None:
+                tp = ET.SubElement(cs, q(STYLE_NS, "text-properties"))
             tp.set(q(FO_NS, "color"), "#FF0000")
         return cs
 
     def ensure_cash_base_cell_style_with_maps(base_name: str, pos_cell_name: str, neg_cell_name: str):
-        """
-        Create a base cell style with style:map entries to route values to POS/NEG cell styles.
-        Calc honors this for accounting conventions and avoids rendering a leading minus.
-        """
         base = find_style(STYLE_NS, "style", STYLE_NS, base_name)
         if base is None:
             base = ET.SubElement(auto, q(STYLE_NS, "style"))
@@ -142,20 +125,24 @@ def inject_content_styles(content_xml: bytes, strip_defaults: bool = True) -> by
             base.set(q(STYLE_NS, "family"), "table-cell")
             base.set(q(STYLE_NS, "parent-style-name"), "Default")
             ET.SubElement(base, q(STYLE_NS, "table-cell-properties"))
-        # Remove any existing maps to avoid duplicates
+        # default data-style on base (use POS data-style)
+        pos_style_el = find_style(STYLE_NS, "style", STYLE_NS, pos_cell_name)
+        pos_ds_name = pos_style_el.get(q(STYLE_NS, "data-style-name")) if pos_style_el is not None else None
+        if not pos_ds_name:
+            pos_ds_name = pos_cell_name.replace("_POS_CELL", "_POS_DS")
+        base.set(q(STYLE_NS, "data-style-name"), pos_ds_name)
+
         for m in list(base.findall(q(STYLE_NS, "map"))):
             base.remove(m)
-        # Map negative values to NEG cell style
         map_neg = ET.SubElement(base, q(STYLE_NS, "map"))
         map_neg.set(q(STYLE_NS, "condition"), "value() < 0")
         map_neg.set(q(STYLE_NS, "apply-style-name"), neg_cell_name)
-        # Map non-negative values to POS cell style
         map_pos = ET.SubElement(base, q(STYLE_NS, "map"))
         map_pos.set(q(STYLE_NS, "condition"), "value() >= 0")
         map_pos.set(q(STYLE_NS, "apply-style-name"), pos_cell_name)
         return base
 
-    # Ensure all required data-styles
+    # Ensure data styles
     for ds in data_specs:
         if ds.kind == "number":
             ensure_number_ds(ds)
@@ -164,12 +151,11 @@ def inject_content_styles(content_xml: bytes, strip_defaults: bool = True) -> by
         elif ds.kind == "cash_neg":
             ensure_cash_neg_ds(ds)
 
-    # Ensure all required cell-styles
+    # Ensure cell styles
     for cs in cell_specs:
         ensure_cell_style(cs)
 
-    # Create base CASHx cell styles with conditional maps when both POS/NEG exist
-    # Infer base names from POS/NEG cell style names: CASH2_POS_CELL -> CASH2_CELL
+    # Create base CASHx styles with conditional maps
     pos_cells = {c.name for c in cell_specs if c.name.endswith("_POS_CELL")}
     neg_cells = {c.name for c in cell_specs if c.name.endswith("_NEG_CELL")}
     for pos in pos_cells:
@@ -191,7 +177,9 @@ def apply_default_language_to_styles(
     else:
         s_root = ET.fromstring(styles_xml)
 
-    office_styles = s_root.find(q(OFFICE_NS, "styles")) or ET.SubElement(s_root, q(OFFICE_NS, "styles"))
+    office_styles = s_root.find(q(OFFICE_NS, "styles"))
+    if office_styles is None:
+        office_styles = ET.SubElement(s_root, q(OFFICE_NS, "styles"))
 
     def ensure_default_style(family: str):
         for ds in office_styles.findall(q(STYLE_NS, "default-style")):
@@ -201,8 +189,18 @@ def apply_default_language_to_styles(
         ds.set(q(STYLE_NS, "family"), family)
         return ds
 
-    def ensure_text_props(parent):
-        tp = parent.find(q(STYLE_NS, "text-properties")) or ET.SubElement(parent, q(STYLE_NS, "text-properties"))
+    def rewrite_text_props(parent):
+        existing = list(parent.findall(q(STYLE_NS, "text-properties")))
+        preserved = {}
+        if existing:
+            for attr, val in existing[0].attrib.items():
+                if "font" in attr or "font-size" in attr:
+                    preserved[attr] = val
+        for tp in existing:
+            parent.remove(tp)
+        tp = ET.SubElement(parent, q(STYLE_NS, "text-properties"))
+        for k, v in preserved.items():
+            tp.set(k, v)
         tp.set(q(FO_NS, "language"), lang)
         tp.set(q(FO_NS, "country"), country)
         tp.set(q(STYLE_NS, "language-asian"), lang)
@@ -213,6 +211,9 @@ def apply_default_language_to_styles(
 
     for family in ("paragraph", "text", "table-cell"):
         ds = ensure_default_style(family)
-        ensure_text_props(ds)
+        rewrite_text_props(ds)
+
+    for cur in list(office_styles.findall(q(NUMBER_NS, "currency-style"))):
+        office_styles.remove(cur)
 
     return ET.tostring(s_root, xml_declaration=True, encoding="UTF-8")

@@ -16,6 +16,7 @@ def parse_style_name(name: str) -> Optional[StyleKey]:
       - PCT1_CELL
       - CASH2_POS_CELL
       - CASH2_NEG_CELL
+      - CASH2_CELL (base; implies POS/NEG via style:map)
     Returns None for unknown or non-semantic names (e.g., TEXT_CELL).
     """
     if not name:
@@ -48,6 +49,8 @@ def parse_style_name(name: str) -> Optional[StyleKey]:
             return StyleKey(kind="cash", decimals=dp, polarity="pos", cell_style_name=u)
         if u.endswith("_NEG_CELL"):
             return StyleKey(kind="cash", decimals=dp, polarity="neg", cell_style_name=u)
+        # Base CASHx_CELL: request generation of POS/NEG and base style maps
+        return StyleKey(kind="cash", decimals=dp, polarity=None, cell_style_name=u)
 
     return None
 
