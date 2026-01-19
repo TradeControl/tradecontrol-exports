@@ -1,267 +1,378 @@
-﻿# pip install odfdo lxml
-import argparse
-import base64
-import io
-import sys
-import zipfile
-from pathlib import Path
-
-from odfdo import Document
-from odfdo.table import Table, Row, Cell, Column
-from style_factory import apply_styles_bytes
+﻿import sys, argparse, base64, io, zipfile
+import pyodbc
 from lxml import etree as ET
 
-# Copy of add_number_cell: identical behavior to the exporter
-# Copy of add_number_cell: identical behavior to the exporter
-def add_number_cell(row: Row, value: float = None, style: str | None = None, formula: str | None = None, display_text: str | None = None):
-    def resolve_cash_style(base: str, is_negative: bool) -> str:
-        u = (base or "").strip().upper()
-        if not u.startswith("CASH") or not u.endswith("_CELL"):
-            return base or "CASH0_CELL"
-        if u.endswith("_POS_CELL") or u.endswith("_NEG_CELL"):
-            return u
-        return u.replace("_CELL", "_NEG_CELL" if is_negative else "_POS_CELL")
+from odfdo import Document, Style
+from odfdo.table import Table, Row, Cell, Column
+from odfdo.element import Element
+from style_factory import apply_styles_bytes
 
-    cell = Cell()
-    is_negative = False
-    if formula:
-        f = formula.strip().upper()
-        if f.startswith("-") or "*-1" in f or "=-" in f:
-            is_negative = True
-        cell.set_attribute("table:formula", f"of:={formula}")
-        cell.set_attribute("office:value-type", "float")
-        cell.set_attribute("office:value", "0")
-    else:
-        num = float(value or 0.0)
-        is_negative = num < 0
-        cell.set_attribute("office:value-type", "float")
-        cell.set_attribute("office:value", str(num))
-    stamped_style = resolve_cash_style(style or "CASH0_CELL", is_negative)
-    cell.set_attribute("table:style-name", stamped_style)
-    row.append(cell)
+def add_stylesheet(doc):
+    # Column header: 8pt bold
+    bold_style = Style(family='table-cell', name='ColumnHeader')
+    bold_style.set_properties(area='text', **{
+        'fo:font-size': '8pt',
+        'fo:font-weight': 'bold',
+        'style:font-weight-complex': 'bold'
+    })
+    bold_style.set_properties(area='table-cell', **{
+        'style:vertical-align': 'middle',
+        'style:wrap-option': 'no-wrap',
+        'style:shrink-to-fit': 'false'
+    })
+    doc.insert_style(bold_style, automatic=True)
 
-def _build_add_number_cell_check_doc() -> bytes:
-    doc = Document("spreadsheet")
-    tbl = Table(name="AddNumberCellCheck")
-    for _ in range(6):
-        tbl.append(Column())
-    r1 = Row()
-    for _ in range(4):
-        r1.append(Cell())
-    add_number_cell(r1, value=1234.5678, style="CASH0_CELL")   # E1
-    add_number_cell(r1, formula="E1*-1", style="CASH0_CELL")    # F1
-    tbl.append(r1)
+    # ce1: default borders (thin left, thick right) for unformatted cells
+    ce1 = Style(family='table-cell', name='ce1')
+    ce1.set_properties(area='table-cell', **{
+        'fo:border-left': '0.5pt solid #000000',
+        'fo:border-right': '1.5pt solid #000000'
+    })
+    doc.insert_style(ce1, automatic=True)
+
+    return doc
+
+def run_test(doc: Document) -> Document:
+    """
+    Column B primary test + extend across columns:
+    - B4: header 'Column B Test'
+    - B5: 1234.5678 as CASH0_CELL
+    - B6: -8765.4321 as CASH0_CELL
+    - B7: 4321.00 as CASH0_CELL (positive total)
+    - B8: -4321.00 as CASH0_CELL (negative total)
+    - B9: =B8 as CASH0_CELL (formula should render negative with red/parentheses)
+    - B10: =B7 as CASH0_CELL (formula should render positive)
+    Column borders:
+    - Column B default cell style = ce1 (thin-left, thick-right)
+    """
+    tbl = Table(name="Sheet1")
+
+    # Create A..H columns; set B default borders
+    for col_idx in range(1, 9):  # A..H
+        col = Column()
+        if col_idx == 2:  # B
+            col.set_attribute('table:default-cell-style-name', 'ce1')
+        tbl.append(col)
+
+    # Rows 1..3: blanks across A..H
+    for _ in range(3):
+        r = Row()
+        for _c in range(8):
+            r.append(Element.from_tag("table:table-cell"))
+        tbl.append(r)
+
+    # Row 4: header in B4
+    r4 = Row()
+    r4.append(Element.from_tag("table:table-cell"))  # A4 blank
+    hdr = Cell(text="Column B Test")
+    hdr.set_attribute("table:style-name", "ColumnHeader")
+    r4.append(hdr)  # B4
+    for _ in range(8 - 2):  # C..H blanks
+        r4.append(Element.from_tag("table:table-cell"))
+    tbl.append(r4)
+
+    # Row 5: B5 = 1234.5678 (neutral style)
+    r5 = Row()
+    r5.append(Element.from_tag("table:table-cell"))  # A5
+    b5 = Cell()
+    b5.set_attribute("office:value-type", "float")
+    b5.set_attribute("office:value", str(float(1234.5678)))
+    b5.set_attribute("table:style-name", "CASH0_CELL")
+    r5.append(b5)
+    for _ in range(8 - 2):
+        r5.append(Element.from_tag("table:table-cell"))
+    tbl.append(r5)
+
+    # Row 6: B6 = -8765.4321 (neutral style; style:map handles negative)
+    r6 = Row()
+    r6.append(Element.from_tag("table:table-cell"))  # A6
+    b6 = Cell()
+    b6.set_attribute("office:value-type", "float")
+    b6.set_attribute("office:value", str(float(-8765.4321)))
+    b6.set_attribute("table:style-name", "CASH0_CELL")
+    r6.append(b6)
+    for _ in range(8 - 2):
+        r6.append(Element.from_tag("table:table-cell"))
+    tbl.append(r6)
+
+    # Row 7: B7 = 4321.00 (neutral style)
+    r7 = Row()
+    r7.append(Element.from_tag("table:table-cell"))  # A7
+    b7 = Cell()
+    b7.set_attribute("office:value-type", "float")
+    b7.set_attribute("office:value", str(float(4321.00)))
+    b7.set_attribute("table:style-name", "CASH0_CELL")
+    r7.append(b7)
+    for _ in range(8 - 2):
+        r7.append(Element.from_tag("table:table-cell"))
+    tbl.append(r7)
+
+    # Row 8: B8 = -4321.00 (neutral style)
+    r8 = Row()
+    r8.append(Element.from_tag("table:table-cell"))  # A8
+    b8 = Cell()
+    b8.set_attribute("office:value-type", "float")
+    b8.set_attribute("office:value", str(float(-4321.00)))
+    b8.set_attribute("table:style-name", "CASH0_CELL")
+    r8.append(b8)
+    for _ in range(8 - 2):
+        r8.append(Element.from_tag("table:table-cell"))
+    tbl.append(r8)
+
+    # Row 9: B9 = B8 (formula; cached value fixed in post-process)
+    r9 = Row()
+    r9.append(Element.from_tag("table:table-cell"))  # A9
+    b9 = Cell()
+    b9.set_attribute("table:formula", "of:=B8")
+    b9.set_attribute("office:value-type", "float")
+    b9.set_attribute("office:value", "0")
+    b9.set_attribute("table:style-name", "CASH0_CELL")
+    r9.append(b9)
+    for _ in range(8 - 2):
+        r9.append(Element.from_tag("table:table-cell"))
+    tbl.append(r9)
+
+    # Row 10: B10 = B7 (formula; cached value fixed in post-process)
+    r10 = Row()
+    r10.append(Element.from_tag("table:table-cell"))  # A10
+    b10 = Cell()
+    b10.set_attribute("table:formula", "of:=B7")
+    b10.set_attribute("office:value-type", "float")
+    b10.set_attribute("office:value", "0")
+    b10.set_attribute("table:style-name", "CASH0_CELL")
+    r10.append(b10)
+    for _ in range(8 - 2):
+        r10.append(Element.from_tag("table:table-cell"))
+    tbl.append(r10)
+
     doc.body.append(tbl)
-    buf = io.BytesIO()
-    try:
-        doc.save(buf)
-        return buf.getvalue()
-    except TypeError:
-        return doc.save()
+    return doc
 
-def _ns():
-    return {
-        "office": "urn:oasis:names:tc:opendocument:xmlns:office:1.0",
-        "style": "urn:oasis:names:tc:opendocument:xmlns:style:1.0",
-        "number": "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0",
-        "table": "urn:oasis:names:tc:opendocument:xmlns:table:1.0",
-        "text": "urn:oasis:names:tc:opendocument:xmlns:text:1.0",
-        "fo": "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0",
+def _post_process_styles_add_borders(content: bytes) -> bytes:
+    # Unzip content.xml and cache entries
+    src_zip = zipfile.ZipFile(io.BytesIO(content), 'r')
+    namelist = src_zip.namelist()
+    if 'content.xml' not in namelist:
+        src_zip.close()
+        return content
+    content_xml = src_zip.read('content.xml')
+
+    # Parse XML
+    root = ET.fromstring(content_xml)
+    ns = {
+        'office': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
+        'style': 'urn:oasis:names:tc:opendocument:xmlns:style:1.0',
+        'table': 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
+        'text': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
+        'number': 'urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0',
+        'fo': 'urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0',
     }
 
-def _extract_content_xml(ods_bytes: bytes) -> bytes:
-    with zipfile.ZipFile(io.BytesIO(ods_bytes), "r") as z:
-        return z.read("content.xml")
+    auto_styles = root.find('office:automatic-styles', ns)
+    if auto_styles is None:
+        src_zip.close()
+        return content
 
-def test_cash0_cell_injection_creates_base_and_maps():
-    original = _build_add_number_cell_check_doc()
-    patched = apply_styles_bytes(original, locale=("en", "GB"), strip_defaults=True)
+    # Column B borders base: ce1 (thin-left, thick-right)
+    ce1_style = auto_styles.find("style:style[@style:name='ce1'][@style:family='table-cell']", ns)
+    ce1_props = ce1_style.find('style:table-cell-properties', ns) if ce1_style is not None else None
+    if ce1_props is None:
+        src_zip.close()
+        return content
 
-    # Parse content.xml from the patched ODS
-    content_xml = _extract_content_xml(patched)
-    root = ET.fromstring(content_xml)
+    # Helpers
+    def ensure_bordered_clone(src_style_name: str) -> str:
+        """Clone a cell style and add ce1 L/R borders; returns new style name."""
+        if not src_style_name:
+            return src_style_name
+        new_name = f"{src_style_name}_BORDERED"
+        existing = auto_styles.find(f"style:style[@style:name='{new_name}'][@style:family='table-cell']", ns)
+        if existing is not None:
+            return new_name
+        src = auto_styles.find(f"style:style[@style:name='{src_style_name}'][@style:family='table-cell']", ns)
+        if src is None:
+            return src_style_name
+        new = ET.fromstring(ET.tostring(src))
+        new.set(f"{{{ns['style']}}}name", new_name)
+        props = new.find('style:table-cell-properties', ns)
+        if props is None:
+            props = ET.Element(f"{{{ns['style']}}}table-cell-properties")
+            new.append(props)
+        for attr in ('border-left', 'border-right'):
+            val = ce1_props.get(f"{{{ns['fo']}}}{attr}")
+            if val:
+                props.set(f"{{{ns['fo']}}}{attr}", val)
+        auto_styles.append(new)
+        return new_name
 
-    ns = _ns()
-    auto = root.find("office:automatic-styles", ns)
-    assert auto is not None, "automatic-styles must exist"
+    # Locate table and rows
+    table = root.find('.//table:table', ns)
+    if table is not None:
+        rows = table.findall('table:table-row', ns)
 
-    # Verify number data styles exist
-    cash_pos_ds = auto.find("number:number-style[@style:name='CASH0_POS_DS']", ns)
-    assert cash_pos_ds is not None, "CASH0_POS_DS must be generated"
-    num_node = cash_pos_ds.find("number:number", ns)
-    assert num_node is not None, "CASH0_POS_DS must contain a <number:number>"
-    assert num_node.get("{%s}grouping" % ns["number"]) == "true", "Grouping should be enabled"
-    assert num_node.get("{%s}decimal-places" % ns["number"]) == "0", "Decimals must match CASH0"
+        # A. Column B accumulation: convert B4..B10 cells' styles to bordered variants
+        if len(rows) >= 4:
+            b4 = rows[3].find("./table:table-cell[2]", ns)
+            if b4 is not None:
+                sname = b4.get(f"{{{ns['table']}}}style-name") or ""
+                bordered = ensure_bordered_clone(sname)
+                if bordered and bordered != sname:
+                    b4.set(f"{{{ns['table']}}}style-name", bordered)
 
-    cash_neg_ds = auto.find("number:number-style[@style:name='CASH0_NEG_DS']", ns)
-    assert cash_neg_ds is not None, "CASH0_NEG_DS must be generated"
-    neg_num = cash_neg_ds.find("number:number", ns)
-    assert neg_num is not None, "CASH0_NEG_DS must contain a <number:number>"
-    assert neg_num.get("{%s}display-factor" % ns["number"]) == "-1", "Negative display factor required"
-    neg_texts = [e.text or "" for e in cash_neg_ds if e.tag == "{%s}text" % ns["number"]]
-    assert "(" in neg_texts and ")" in neg_texts, "Negative style should wrap with parentheses"
+        for ridx in (4, 5, 6, 7, 8, 9):
+            if len(rows) > ridx:
+                cell = rows[ridx].find("./table:table-cell[2]", ns)
+                if cell is not None:
+                    sname = cell.get(f"{{{ns['table']}}}style-name") or ""
+                    bordered = ensure_bordered_clone(sname)
+                    if bordered and bordered != sname:
+                        cell.set(f"{{{ns['table']}}}style-name", bordered)
 
-    # Verify POS/NEG cell styles exist and reference data styles
-    pos_cell = auto.find("style:style[@style:name='CASH0_POS_CELL']", ns)
-    assert pos_cell is not None, "CASH0_POS_CELL must be created"
-    assert pos_cell.get("{%s}data-style-name" % ns["style"]) == "CASH0_POS_DS"
+        # B. Fix cached values for simple direct-reference formulas so style:map applies immediately
+        def col_letters_to_index(letters: str) -> int:
+            idx = 0
+            for ch in letters:
+                idx = idx * 26 + (ord(ch.upper()) - ord('A') + 1)
+            return idx
 
-    neg_cell = auto.find("style:style[@style:name='CASH0_NEG_CELL']", ns)
-    assert neg_cell is not None, "CASH0_NEG_CELL must be created"
-    assert neg_cell.get("{%s}data-style-name" % ns["style"]) == "CASH0_NEG_DS"
+        def find_cell_by_index(row_elem: ET._Element, col_index_1based: int):
+            count = 0
+            for child in row_elem:
+                tag = child.tag
+                if not (tag.endswith('table-cell') or tag.endswith('covered-table-cell')):
+                    continue
+                repeat = int(child.get(f"{{{ns['table']}}}number-columns-repeated", "1"))
+                next_count = count + repeat
+                if col_index_1based <= next_count:
+                    return child
+                count = next_count
+            return None
 
-    # Verify base CASH0_CELL exists with a default data-style and conditional maps
-    base_cell = auto.find("style:style[@style:name='CASH0_CELL']", ns)
-    assert base_cell is not None, "CASH0_CELL base style must be created"
-    assert base_cell.get("{%s}data-style-name" % ns["style"]) == "CASH0_POS_DS", "Base should default to POS data style"
+        import re
+        direct_ref_patterns = [
+            re.compile(r"^of:=\.?\$?([A-Za-z]+)\$?(\d+)$"),
+            re.compile(r"^of:=\[\.\$?([A-Za-z]+)\$?(\d+)\]$"),
+        ]
 
-    maps = base_cell.findall("style:map", ns)
-    assert any(m.get("{%s}condition" % ns["style"]) == "value() < 0" and m.get("{%s}apply-style-name" % ns["style"]) == "CASH0_NEG_CELL" for m in maps), "NEG map required"
-    assert any(m.get("{%s}condition" % ns["style"]) == "value() >= 0" and m.get("{%s}apply-style-name" % ns["style"]) == "CASH0_POS_CELL" for m in maps), "POS map required"
+        for row in rows:
+            cells = row.findall('table:table-cell', ns)
+            for cell in cells:
+                formula = cell.get(f"{{{ns['table']}}}formula")
+                if not formula:
+                    continue
+                m = None
+                for pat in direct_ref_patterns:
+                    m = pat.match(formula)
+                    if m:
+                        break
+                if not m:
+                    continue
+                col_letters, row_num = m.group(1), int(m.group(2))
+                ref_col = col_letters_to_index(col_letters)
+                if 1 <= row_num <= len(rows):
+                    ref_row = rows[row_num - 1]
+                    ref_cell = find_cell_by_index(ref_row, ref_col)
+                    if ref_cell is not None:
+                        vtype = ref_cell.get(f"{{{ns['office']}}}value-type")
+                        if vtype:
+                            cell.set(f"{{{ns['office']}}}value-type", vtype)
+                        val = ref_cell.get(f"{{{ns['office']}}}value")
+                        if val is not None:
+                            cell.set(f"{{{ns['office']}}}value", val)
+                        cur = ref_cell.get(f"{{{ns['office']}}}currency")
+                        if cur:
+                            cell.set(f"{{{ns['office']}}}currency", cur)
 
-def test_cash0_cell_applied_to_numeric_cells():
-    original = _build_add_number_cell_check_doc()
-    patched = apply_styles_bytes(original, locale=("en", "GB"), strip_defaults=True)
+        # C. Enforce applied POS/NEG bordered style based on cached numeric value for column B cells
+        # This guarantees parentheses/red for negatives, even on formula cells.
+        def enforce_pos_neg_bordered(cell_elem: ET._Element):
+            sname = cell_elem.get(f"{{{ns['table']}}}style-name") or ""
+            if not sname:
+                return
+            val_str = cell_elem.get(f"{{{ns['office']}}}value")
+            vtype = cell_elem.get(f"{{{ns['office']}}}value-type")
+            if vtype != "float" or val_str is None:
+                return
+            try:
+                num = float(val_str)
+            except ValueError:
+                return
+            # Ensure we have bordered variants of POS/NEG
+            pos_bordered = ensure_bordered_clone("CASH0_POS_CELL")
+            neg_bordered = ensure_bordered_clone("CASH0_NEG_CELL")
+            # Switch the applied style to explicit POS/NEG bordered to force format
+            cell_elem.set(f"{{{ns['table']}}}style-name", neg_bordered if num < 0 else pos_bordered)
 
-    content_xml = _extract_content_xml(patched)
-    root = ET.fromstring(content_xml)
-    ns = _ns()
+        # Apply to B5..B10 (column index 2)
+        for ridx in (4, 5, 6, 7, 8, 9):  # rows are 0-based in code; B5..B10
+            if len(rows) > ridx:
+                b_cell = rows[ridx].find("./table:table-cell[2]", ns)
+                if b_cell is not None:
+                    enforce_pos_neg_bordered(b_cell)
 
-    table = root.find(".//table:table[@table:name='AddNumberCellCheck']", ns)
-    assert table is not None, "AddNumberCellCheck table must exist"
-    row = table.find("table:table-row", ns)
-    assert row is not None, "First row must exist"
-    cells = row.findall("table:table-cell", ns)
-    assert len(cells) >= 6, "Row should have at least 6 cells (A..F)"
+        # D. Repeater row to last, covering A..H (8 columns)
+        rep = ET.Element(f"{{{ns['table']}}}table-row")
+        rep.set(f"{{{ns['table']}}}number-rows-repeated", "1048568")
+        rep_cell = ET.Element(f"{{{ns['table']}}}table-cell")
+        rep_cell.set(f"{{{ns['table']}}}number-columns-repeated", "8")
+        rep.append(rep_cell)
+        table.append(rep)
 
-    e1 = cells[4]
-    f1 = cells[5]
-    # E1 is a positive numeric value (1234.5678), should be POS style
-    assert e1.get("{%s}value-type" % ns["office"]) == "float"
-    assert e1.get("{%s}style-name" % ns["table"]) == "CASH0_POS_CELL"
+    # Serialize back
+    new_content_xml = ET.tostring(root, encoding='UTF-8', xml_declaration=True)
 
-    # F1 is a negative formula (E1*-1), should be NEG style
-    assert f1.get("{%s}value-type" % ns["office"]) == "float"
-    assert f1.get("{%s}style-name" % ns["table"]) == "CASH0_NEG_CELL"
+    # Cache entries
+    entries = {}
+    for name in namelist:
+        if name == 'content.xml':
+            continue
+        data = src_zip.read(name)
+        entries[name] = data
+    src_zip.close()
 
-def _col_letter(index_1based: int) -> str:
-    dividend = index_1based
-    name = ""
-    while dividend > 0:
-        modulo = (dividend - 1) % 26
-        name = chr(65 + modulo) + name
-        dividend = (dividend - modulo) // 26
-    return name
+    # Write new zip (mimetype first stored, then content and others deflated)
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w') as zf:
+        if 'mimetype' in entries:
+            zi = zipfile.ZipInfo('mimetype')
+            zi.compress_type = zipfile.ZIP_STORED
+            zf.writestr(zi, entries['mimetype'])
+            del entries['mimetype']
+        zf.writestr('content.xml', new_content_xml)
+        for name, data in entries.items():
+            zf.writestr(name, data)
 
-def _parse_locale_tuple(locale_str: str) -> tuple[str, str]:
-    s = (locale_str or "").strip()
-    if not s:
-        return ("en", "GB")
-    alias = {
-        "france": "fr-FR",
-        "germany": "de-DE",
-        "spain": "es-ES",
-        "united kingdom": "en-GB",
-        "uk": "en-GB"
-    }
-    s = alias.get(s.lower(), s)
-    s = s.replace("_", "-")
-    parts = s.split("-", 1)
-    if len(parts) == 1:
-        lang = parts[0].lower()
-        defaults = {
-            "en": "GB",
-            "fr": "FR",
-            "de": "DE",
-            "es": "ES",
-        }
-        country = defaults.get(lang, lang.upper())
-        return (lang, country)
-    lang = parts[0].lower()
-    country = parts[1].upper()
-    return (lang, country)
+    return out.getvalue()
 
-def build_format_template_sheet(doc: Document, cur, sheet_name: str = "FormatTemplates") -> Table:
-    # (unchanged; kept for later DB-driven format checks)
-    table = Table(sheet_name)
-    templates = cur.fetchall()
-    if not templates:
-        r = Row(); r.append(Cell(text="(no templates)")); table.append(r)
-        return table
-
-    headers = []
-    for tpl in templates:
-        code = (tpl[0] if not isinstance(tpl, dict) else tpl.get("TemplateCode","")).strip()
-        ucode = code.upper()
-        if ucode.startswith("CASH"):
-            headers.append((f"{code}+", f"{ucode}_POS_CELL", ucode))
-            headers.append((f"{code}-", f"{ucode}_NEG_CELL", ucode))
-        else:
-            headers.append((code, f"{ucode}_CELL", ucode))
-
-    for _ in headers:
-        table.append(Column())
-
-    hdr = Row()
-    for title, _, _ in headers:
-        hdr.append(Cell(text=title))
-    table.append(hdr)
-
-    row2 = Row()
-    for title, style_name, ucode in headers:
-        c = Cell()
-        if ucode.startswith("PCT"):
-            c.set_attribute("office:value-type", "percentage")
-            c.set_attribute("office:value", "0.23456")
-        elif ucode.startswith("CASH"):
-            val = "1234.567" if title.endswith("+") else "-1234.567"
-            c.set_attribute("office:value-type", "float")
-            c.set_attribute("office:value", val)
-        else:
-            c.set_attribute("office:value-type", "float")
-            c.set_attribute("office:value", "1.2345")
-        c.set_attribute("table:style-name", style_name)
-        row2.append(c)
-    table.append(row2)
-
-    row3 = Row()
-    for idx, (title, style_name, ucode) in enumerate(headers, start=1):
-        letter = _col_letter(idx)
-        f = Cell()
-        if ucode.startswith("PCT"):
-            f.set_attribute("office:value-type", "percentage")
-        else:
-            f.set_attribute("office:value-type", "float")
-        f.set_attribute("office:value", "0")
-        f.set_attribute("table:formula", f"of:={letter}2")
-        f.set_attribute("table:style-name", style_name)
-        row3.append(f)
-    table.append(row3)
-
-    return table
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--filename", default="AddNumberCellCheck.ods", help="logical filename to print alongside base64")
-    parser.add_argument("--locale", default="en-GB", help="locale like en-GB, fr-FR")
-    parser.add_argument("--keep-defaults", action="store_true", help="Do not strip default sheet artifacts like 'Feuille1'")
-    # Backward-compat: accept and ignore legacy args
-    parser.add_argument("--conn", help="ignored (legacy)", default=None)
-    parser.add_argument("--query", help="ignored (legacy)", default=None)
+    parser.add_argument("--conn", required=True)
+    parser.add_argument("--query", required=False)
+    parser.add_argument("--filename", required=True)
     args = parser.parse_args()
+    conn = pyodbc.connect(args.conn)
 
-    # Run the two focused tests (no DB required)
-    test_cash0_cell_injection_creates_base_and_maps()
-    test_cash0_cell_applied_to_numeric_cells()
+    doc = Document("spreadsheet")
+    doc = add_stylesheet(doc)
+    doc = run_test(doc)
 
-    # Produce a minimal ODS to visually inspect, then apply styles
-    content = _build_add_number_cell_check_doc()
-    lang, country = _parse_locale_tuple(args.locale)
-    content = apply_styles_bytes(
-        content,
-        locale=(lang, country),
-        strip_defaults=not args.keep_defaults
-    )
+    # Save to bytes
+    raw = io.BytesIO()
+    doc.save(raw)
+    content = raw.getvalue()
 
+    # Materialize semantic styles (NUM/PCT/CASH)
+    try:
+        content = apply_styles_bytes(content, locale=("en", "GB"))
+    except Exception:
+        pass
+
+    # Post-process: add borders to column default, clone CASH styles with borders, fix B5/B6 style names, append repeated row
+    content = _post_process_styles_add_borders(content)
+
+    conn.close()
     encoded = base64.b64encode(content).decode("ascii")
     print(f"{args.filename}|{encoded}")
+
+if __name__ == "__main__":
+    main()

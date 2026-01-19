@@ -125,8 +125,12 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
     public async Task<IReadOnlyList<CategoryExpressionDto>> GetCategoryExpressionsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT DisplayOrder, Category, Expression, Format
-            FROM Cash.vwCategoryExpressions
+            SELECT DisplayOrder, Category, Expression, 
+	            CASE COALESCE(ce.Template, '') 
+		            WHEN '' THEN ce.Format
+		            ELSE ce.Template
+	            END Format
+            FROM Cash.vwCategoryExpressions ce
             WHERE SyntaxTypeCode IN (0, 2)
             ORDER BY DisplayOrder, Category;";
         var list = new List<CategoryExpressionDto>();

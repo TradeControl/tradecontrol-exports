@@ -1,44 +1,17 @@
 ﻿# pip install pyodbc odfdo
 import json, sys, io, base64
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Union
 
-from odfdo import Document
+from odfdo import Document, Settings, Style
 from odfdo.table import Table, Row, Cell, Column
+from odfdo.element import Element
 
 from data.enums import CashType
 from data.factory import create_repo
 from i18n.resources import ResourceManager
 from style_factory import apply_styles_bytes
-
-# ********** TEMP **************************************
-def _append_add_number_cell_check(doc: Document) -> None:
-    """
-    Verify formatting via add_number_cell:
-    - E1: 1234.5678
-    - F1: -E1
-    Both with base accounting style CASH2_CELL (maps to POS/NEG).
-    """
-    tbl = Table(name="AddNumberCellCheck")
-    # Ensure columns up to F
-    for _ in range(6):
-        tbl.append(Column())
-
-    r1 = Row()
-    # A-D empty to reach E
-    for _ in range(4):
-        r1.append(Cell())
-
-    # E1 via add_number_cell (value)
-    add_number_cell(r1, value=1234.5678, style="CASH0_CELL")
-    # F1 via add_number_cell (formula)
-    add_number_cell(r1, formula="E1*-1", style="CASH0_CELL")
-
-    tbl.append(r1)
-    doc.body.append(tbl)
-# ********** TEMP **************************************
-
 
 def _col_letter(index_1based: int) -> str:
     dividend = index_1based
@@ -49,12 +22,65 @@ def _col_letter(index_1based: int) -> str:
         dividend = (dividend - modulo) // 26
     return name
 
+# def _empty_cell(style: Optional[str] = None) -> Element:
+#     # Truly empty cell: no text:p child
+#     e = Element.from_tag("table:table-cell")
+#     if style:
+#         e.set_attribute("table:style-name", style)
+#     return e
+
+def add_spanned_text_cell(row: Row, text: str, span: int = 1, style: Optional[str] = None) -> None:
+    # Create a table cell with text and span it across span columns.
+    tc = Element.from_tag("table:table-cell")
+    if style:
+        tc.set_attribute("table:style-name", style)
+    if span and span > 1:
+        tc.set_attribute("table:number-columns-spanned", str(span))
+    p = Element.from_tag("text:p")
+    p.text = str(text or "")
+    tc.append(p)
+    row.append(tc)
+    # For each additional spanned column, add a covered cell (never contains text:p)
+    for _ in range(max(0, span - 1)):
+        row.append(Element.from_tag("table:covered-table-cell"))
+
 def add_text_cell(row: Row, text: str, style: Optional[str] = None):
-    # Only add text when not empty; allows visual overflow in UI
-    if text is not None and str(text) != "":
-        row.append(Cell(text=str(text)))
+    # If there is actual text, create a normal cell
+    if text is not None and str(text).strip() != "":
+        cell = Cell(text=str(text))
+        if style:
+            cell.set_attribute("table:style-name", style)
+        row.append(cell)
     else:
-        row.append(Cell())
+        # Method 5
+        # append a raw empty table cell (no text:p)
+        # row.append(_empty_cell(style))
+
+        # Method 4
+        # empty = Element.from_tag("table:table-cell")
+        # if style:
+        #     empty.set_attribute("table:style-name", style)
+        # Do NOT add any text child
+        # row.append(empty)
+
+        # Method 3
+        # cell = Cell()
+        # row.append(cell)
+        
+        # last_cell = row.get_cells()[-1]
+        # paragraphs = last_cell.get_elements('text:p')
+        # for p in paragraphs:
+        #     last_cell.delete_element(p)
+
+        # Method 2
+        #cell = Cell(text=None)
+        #for p in cell.get_elements('text:p'):
+        #    cell.delete_element(p)
+        #row.append(cell)
+
+        # Method 1
+        null_cell = Element.from_tag('table:table-cell')
+        row.append(null_cell)
 
 def add_number_cell(row: Row, value: float = None, style: Optional[str] = None, formula: str = None, display_text: str = None):
     """
@@ -113,12 +139,110 @@ def _to_semantic_cell_style(template_code: Optional[str]) -> str:
         return f"{u}_CELL"
     return "CASH0_CELL"
 
-def freeze_first_rows(doc: Document, table_name: str, freeze_row_index: int = 4):
-    """
-    No-op in this migration step.
-    TODO: Reintroduce via settings.xml manipulation in a follow-up.
-    """
-    return
+def freeze_and_rename_active_sheet(doc: Document, new_name: str, freeze_row_index: int = 4):
+    settings = getattr(doc, "settings", None)
+    if settings is None:
+        settings = Settings()
+        doc.settings = settings
+
+    def item(name: str, typ: str, val: str) -> Element:
+        e = Element.from_tag("config:config-item")
+        e.set_attribute("config:name", name)
+        e.set_attribute("config:type", typ)
+        e.text = str(val)
+        return e
+
+    # 1) Locate the main view-settings set (do not remove it)
+    view_sets = settings.root.xpath(".//config:config-item-set[@config:name='ooo:view-settings']")
+    if not view_sets:
+        # If absent, create a minimal container
+        view_set = Element.from_tag("config:config-item-set")
+        view_set.set_attribute("config:name", "ooo:view-settings")
+        settings.root.append(view_set)
+    else:
+        view_set = view_sets[0]
+
+    # 2) Get or create the first view entry
+    views_list = view_set.xpath(".//config:config-item-map-indexed[@config:name='Views']")
+    if not views_list:
+        views = Element.from_tag("config:config-item-map-indexed")
+        views.set_attribute("config:name", "Views")
+        view_set.append(views)
+    else:
+        views = views_list[0]
+
+    entries = views.xpath("./config:config-item-map-entry")
+    if entries:
+        view_entry = entries[0]
+    else:
+        view_entry = Element.from_tag("config:config-item-map-entry")
+        views.append(view_entry)
+
+    # 3) Ensure ActiveTable points to new_name; remove old one if present
+    for at in view_entry.xpath("./config:config-item[@config:name='ActiveTable']"):
+        at.parent.delete(at)
+    view_entry.append(item("ActiveTable", "string", new_name))
+
+    # 4) Find/create Tables map, remove ghost entries, and upsert the Cash Flow freeze keys
+    tables_map_list = view_entry.xpath("./config:config-item-map-named[@config:name='Tables']")
+    if not tables_map_list:
+        tables_map = Element.from_tag("config:config-item-map-named")
+        tables_map.set_attribute("config:name", "Tables")
+        view_entry.append(tables_map)
+    else:
+        tables_map = tables_map_list[0]
+
+    # Remove ghost table entries like Feuille1/Sheet1
+    for ghost in list(tables_map.xpath("./config:config-item-map-entry")):
+        nm = ghost.get_attribute("config:name") or ""
+        if nm in ("Feuille1", "Sheet1"):
+            tables_map.delete(ghost)
+
+    # Get or create the table entry for new_name
+    target_entries = tables_map.xpath(f"./config:config-item-map-entry[@config:name='{new_name}']")
+    if target_entries:
+        table_entry = target_entries[0]
+    else:
+        table_entry = Element.from_tag("config:config-item-map-entry")
+        table_entry.set_attribute("config:name", new_name)
+        tables_map.append(table_entry)
+
+    def upsert(ci_name: str, typ: str, val: str):
+        for ci in table_entry.xpath(f"./config:config-item[@config:name='{ci_name}']"):
+            ci.parent.delete(ci)
+        table_entry.append(item(ci_name, typ, val))
+
+    # D5 freeze and pane focus
+    upsert("CursorPositionX", "int", "3")
+    upsert("CursorPositionY", "int", str(freeze_row_index))
+    upsert("HorizontalSplitMode", "short", "2")
+    upsert("VerticalSplitMode", "short", "2")
+    upsert("HorizontalSplitPosition", "int", "3")
+    upsert("VerticalSplitPosition", "int", str(freeze_row_index))
+    upsert("ActiveSplitRange", "short", "3")
+    upsert("PositionLeft", "int", "0")
+    upsert("PositionRight", "int", "3")
+    upsert("PositionTop", "int", "0")
+    upsert("PositionBottom", "int", str(freeze_row_index))
+
+    # 5) Clean up ScriptConfiguration ghosts (optional but avoids Calc renaming)
+    cfg_sets = settings.root.xpath(".//config:config-item-set[@config:name='ooo:configuration-settings']")
+    if cfg_sets:
+        cfg_set = cfg_sets[0]
+        script_maps = cfg_set.xpath(".//config:config-item-map-named[@config:name='ScriptConfiguration']")
+        if script_maps:
+            script_map = script_maps[0]
+            for ghost in list(script_map.xpath("./config:config-item-map-entry")):
+                nm = ghost.get_attribute("config:name") or ""
+                if nm in ("Feuille1", "Sheet1"):
+                    script_map.delete(ghost)
+            # Upsert CodeName for new_name if needed
+            target = script_map.xpath(f"./config:config-item-map-entry[@config:name='{new_name}']")
+            if not target:
+                entry = Element.from_tag("config:config-item-map-entry")
+                entry.set_attribute("config:name", new_name)
+                entry.append(item("CodeName", "string", "Sheet1"))
+                script_map.append(entry)
 
 def cols_for_year_block(month_count: int, year_index: int) -> tuple[int, int]:
     start = 3 + year_index * (month_count + 1)
@@ -178,9 +302,10 @@ def render_summary_after_categories(sb: SheetBuilder,
         for col in range(firstCol, lastCol + 1):
             col_letter = _col_letter(col)
             if target_row > 0:
-                add_number_cell(r, formula=f"{col_letter}{target_row}")
+                # Use default numeric style so Style Factory formats are applied
+                add_number_cell(r, formula=f"{col_letter}{target_row}", style="CASH0_CELL")
             else:
-                add_number_cell(r, value=0.0)
+                add_number_cell(r, value=0.0, style="CASH0_CELL")
 
         sb.append_row(r)
 
@@ -193,7 +318,7 @@ def render_summary_after_categories(sb: SheetBuilder,
 
     for col in range(firstCol, lastCol + 1):
         col_letter = _col_letter(col)
-        add_number_cell(pr, formula=f"SUM([.{col_letter}{start_row_index}:.{col_letter}{end_row_index}])")
+        add_number_cell(pr, formula=f"SUM([.{col_letter}{start_row_index}:.{col_letter}{end_row_index}])", style="CASH0_CELL")
 
     sb.append_row(pr)
 
@@ -422,10 +547,9 @@ def render_expressions(sb: SheetBuilder,
         category_name = (expr.get("Category") or "").strip()
         template = (expr.get("Expression") or "").strip()
 
-        # Determine style override from Format when SyntaxTypeCode is Libre or Both
-        syntax = (expr.get("SyntaxTypeCode") or "").strip().lower()
-        fmt = expr.get("Format") or expr.get("TemplateCode")  # support alt field names
-        override_style = _to_semantic_cell_style(fmt) if syntax in ("libre", "both") else "CASH0_CELL"
+        # Always honor Format/TemplateCode (e.g., Pct0 -> PCT0_CELL) — no SyntaxTypeCode gating
+        fmt = expr.get("Format") or expr.get("TemplateCode")
+        override_style = _to_semantic_cell_style(fmt) if fmt else "NUM0_CELL"
 
         # A, B
         add_text_cell(r, category_name)
@@ -474,7 +598,7 @@ def render_expressions(sb: SheetBuilder,
             normalized = normalized.replace(f"[{name}]", f"[{name_to_code[name]}]")
         normalized = normalize_for_calc(normalized)
 
-        # Write per-column formulas with style override
+        # Write per-column formulas with style override (Pct0 -> PCT0_CELL, Num2 -> NUM2_CELL, etc.)
         for col in range(first_col, last_col + 1):
             col_letter = _col_letter(col)
             formula = normalized
@@ -534,7 +658,10 @@ def render_vat_recurrence_totals(sb: SheetBuilder, repo, res, years, months, inc
             period_vals = []
             for p in periods:
                 v = 0.0
-                if include_active_periods or (p.get("StartOn") <= datetime.utcnow()):
+                start_on = p.get("StartOn")
+                if isinstance(start_on, datetime) and start_on.tzinfo is None:
+                    start_on = start_on.replace(tzinfo=timezone.utc)
+                if include_active_periods or (start_on <= datetime.now(timezone.utc)):
                     if li == 0: v = float(p.get("HomeSales", 0) or 0)
                     elif li == 1: v = float(p.get("HomePurchases", 0) or 0)
                     elif li == 2: v = float(p.get("ExportSales", 0) or 0)
@@ -611,7 +738,10 @@ def render_vat_period_totals(sb: SheetBuilder, repo, res, years, months, include
             month_vals = [0.0] * len(months)
 
             for p in periods:
-                if include_active_periods or (p.get("StartOn") <= datetime.utcnow()):
+                start_on = p.get("StartOn")
+                if isinstance(start_on, datetime) and start_on.tzinfo is None:
+                    start_on = start_on.replace(tzinfo=timezone.utc)
+                if include_active_periods or (start_on <= datetime.now(timezone.utc)):
                     mdt = p.get("StartOn")
                     mnum = mdt.month if hasattr(mdt, "month") else None
                     if mnum is None:
@@ -798,16 +928,79 @@ def _parse_locale_tuple(locale_str: str) -> tuple[str, str]:
     country = parts[1].upper()
     return (lang, country)
 
-def generate_ods(payload: dict) -> tuple[str, bytes]:
+def add_stylesheet(doc):
+    bold_style = Style(family='table-cell', name='BoldHeaderStyle')
+    bold_style.set_properties(area='text', **{
+        'fo:font-weight': 'bold',
+        'style:font-weight-complex': 'bold'
+    })
+    bold_style.set_properties(area='table-cell', **{
+        'style:vertical-align': 'middle',
+        'style:wrap-option': 'no-wrap',
+        'style:shrink-to-fit': 'false'
+    })
+    doc.insert_style(bold_style, automatic=True)
+
+    col_b_style = Style(family='table-column', name='ColBWidth')
+    col_b_style.set_properties(area='table-column', **{
+        'style:column-width': '8.5cm'
+    })
+    doc.insert_style(col_b_style, automatic=True)
+
+    row4_hdr = Style(family='table-cell', name='Row4HeaderCell')
+    row4_hdr.set_properties(area='text', **{
+        'fo:font-size': '8pt',
+        'fo:font-weight': 'bold',
+        'style:font-weight-complex': 'bold'
+    })
+    row4_hdr.set_properties(area='table-cell', **{
+        'style:vertical-align': 'middle',
+        'style:wrap-option': 'no-wrap',
+        'style:shrink-to-fit': 'false',
+        'fo:border-top': '0.5pt solid #000000',
+        'fo:border-bottom': '0.5pt solid #000000'
+    })
+    doc.insert_style(row4_hdr, automatic=True)
+
+    totals_col_header = Style(family='table-cell', name='TotalsColHeaderCell')
+    totals_col_header.set_properties(area='text', **{
+        'fo:font-size': '8pt',
+        'fo:font-weight': 'bold',
+        'style:font-weight-complex': 'bold'
+    })
+    totals_col_header.set_properties(area='table-cell', **{
+        'style:vertical-align': 'middle',
+        'style:wrap-option': 'no-wrap',
+        'style:shrink-to-fit': 'false',
+        'fo:border-top': '0.5pt solid #000000',
+        'fo:border-bottom': '0.5pt solid #000000',
+        'fo:border-left': '0.5pt solid #000000',
+        'fo:border-right': '1.5pt solid #000000'
+    })
+    doc.insert_style(totals_col_header, automatic=True)
+
+    totals_col_default = Style(family='table-cell', name='TotalsColDefaultCell')
+    totals_col_default.set_properties(area='table-cell', **{
+        'fo:border-left': '0.5pt solid #000000',
+        'fo:border-right': '1.5pt solid #000000'
+    })
+    doc.insert_style(totals_col_default, automatic=True)
+
+    return doc
+
+def initialise_ods(payload: dict) -> dict:
     params = payload.get("Params") or payload.get("params") or {}
     conn = payload.get("SqlConnection") or payload.get("sqlConnection") or payload.get("connectionString")
     locale = params.get("locale") or "en-GB"
-    # Normalize locale once and reuse
     lang, country = _parse_locale_tuple(locale)
-    normalized_locale = f"{lang}-{country}"
 
-    res = ResourceManager(normalized_locale)
+    res = ResourceManager(f"{lang}-{country}")
     repo = create_repo(conn, params)
+
+    active = repo.get_active_period() or {}
+    years = repo.get_active_years()
+    months = repo.get_months()
+    company_name = repo.get_company_name()
 
     include_active = params.get("includeActivePeriods") == "true"
     include_orderbook = params.get("includeOrderBook") == "true"
@@ -816,93 +1009,115 @@ def generate_ods(payload: dict) -> tuple[str, bytes]:
     include_bank_balances = params.get("includeBankBalances") == "true"
     include_balance_sheet = params.get("includeBalanceSheet") == "true"
 
-    active = repo.get_active_period() or {}
-    years = repo.get_active_years()
-    months = repo.get_months()
-    company_name = repo.get_company_name()
+    return {
+        "params": params,
+        "conn": conn,
+        "lang": lang,
+        "country": country,
+        "res": res,
+        "repo": repo,
+        "active": active,
+        "years": years,
+        "months": months,
+        "company_name": company_name,
+        "table_name": "Cash Flow",
+        "include_active": include_active,
+        "include_orderbook": include_orderbook,
+        "include_tax_accruals": include_tax_accruals,
+        "include_vat_details": include_vat_details,
+        "include_bank_balances": include_bank_balances,
+        "include_balance_sheet": include_balance_sheet,
+    }
 
-    table_name = "Cash Flow"
-    sb = SheetBuilder(name=table_name)
+def build_cashflow_table(sb: SheetBuilder, ctx: dict) -> SheetBuilder:
+    res = ctx["res"]
+    repo = ctx["repo"]
+    years = ctx["years"]
+    months = ctx["months"]
+    active = ctx["active"]
+    company_name = ctx["company_name"]
 
-    # Columns: A (Code), B (Name), C hidden (we just create the columns; visibility skip for now)
-    sb.table.append(Column())  # A
-    sb.table.append(Column())  # B
-    sb.table.append(Column())  # C (was hidden in odfpy; can be handled later if needed)
+    include_active = ctx["include_active"]
+    include_orderbook = ctx["include_orderbook"]
+    include_tax_accruals = ctx["include_tax_accruals"]
+    include_vat_details = ctx["include_vat_details"]
+    include_bank_balances = ctx["include_bank_balances"]
+    include_balance_sheet = ctx["include_balance_sheet"]
 
-    # Row 1: Title
-    tr = Row()
-    add_text_cell(tr, res.t("TextStatementTitle").format(active.get("MonthName",""), active.get("Description","")))
-    add_text_cell(tr, "")
-    tr.append(Cell())
-    sb.append_row(tr)
+    # A,B,C
+    colA = Column()
+    colB = Column()
+    colC = Column()
+    colB.set_attribute("table:style-name", "ColBWidth")
+    colC.set_attribute("table:visibility", "collapse")
+    sb.table.append(colA)
+    sb.table.append(colB)
+    sb.table.append(colC)
 
-    # Row 2: Company
-    tr = Row()
-    add_text_cell(tr, company_name or "")
-    add_text_cell(tr, "")
-    tr.append(Cell())
-    sb.append_row(tr)
+    # Append period grid columns (months + totals per year)
+    month_count = len(months)
+    total_period_cols = len(years) * (month_count + 1)
+    for i in range(total_period_cols):
+        col = Column()
+        # Totals column in each block gets default borders (applies to blank cells)
+        if (i % (month_count + 1)) == month_count:
+            col.set_attribute("table:default-cell-style-name", "TotalsColDefaultCell")
+        sb.table.append(col)
 
-    # Row 3: Year labels
-    year_row = Row()
-    add_text_cell(year_row, res.t("TextDate"))
-    add_text_cell(year_row, datetime.now().strftime("%d %b %H:%M:%S"))
-    year_row.append(Cell())  # C
+    # Row 1
+    r1 = Row()
+    title_text = res.t("TextStatementTitle").format(active.get("MonthName", ""), active.get("Description", ""))
+    add_spanned_text_cell(r1, title_text, span=3, style="BoldHeaderStyle")
+    sb.append_row(r1)
+
+    # Row 2
+    r2 = Row()
+    add_spanned_text_cell(r2, company_name or "", span=3, style="BoldHeaderStyle")
+    sb.append_row(r2)
+
+    # Row 3
+    r3 = Row()
+    add_text_cell(r3, res.t("TextDate"), style="BoldHeaderStyle")
+    add_text_cell(r3, datetime.now().strftime("%d %b %H:%M:%S"), style="BoldHeaderStyle")
+    r3.append(Cell(text=None))
     for y in years:
         desc = y.get("Description") or str(y.get("YearNumber"))
         status = y.get("CashStatus") or ""
-        add_text_cell(year_row, f"{desc} ({status})" if status else desc)
-        for _ in range(len(months) - 1):
-            year_row.append(Cell())
-        add_text_cell(year_row, desc)
-    sb.append_row(year_row)
+        add_spanned_text_cell(r3, f"{desc} ({status})" if status else desc, span=2, style="BoldHeaderStyle")
+        for _ in range(month_count - 2):
+            r3.append(Cell(text=None))
+        add_text_cell(r3, desc, style="BoldHeaderStyle")
+    sb.append_row(r3)
 
-    # Row 4: Column headers
-    hdr = Row()
-    add_text_cell(hdr, res.t("TextCode"))
-    add_text_cell(hdr, res.t("TextName"))
-    hdr.append(Cell())
-    for _y in years:
+    # Row 4 headers
+    r4 = Row()
+    add_text_cell(r4, res.t("TextCode"), style="Row4HeaderCell")
+    add_text_cell(r4, res.t("TextName"), style="Row4HeaderCell")
+    c_cell = Cell(text=None)
+    c_cell.set_attribute("table:style-name", "Row4HeaderCell")
+    r4.append(c_cell)
+    # Month headers use Row4HeaderCell; Totals header uses TotalsColHeaderCell
+    for _ in years:
         for m in months:
-            add_text_cell(hdr, str(m.get("MonthName","")))
-        add_text_cell(hdr, res.t("TextTotals"))
-    sb.append_row(hdr)
+            add_text_cell(r4, str(m.get("MonthName", "")), style="Row4HeaderCell")
+        add_text_cell(r4, res.t("TextTotals"), style="TotalsColHeaderCell")
+    sb.append_row(r4)
 
-    # Trade categories + summary
+    # Sections
     totals_row_by_category: dict[str, int] = {}
-    render_categories_and_summary(sb, repo, res, years, months, CashType.Trade,
-                                  include_active, include_orderbook, False,
-                                  totals_row_by_category)
-    render_summary_after_categories(sb, repo, res, years, months,
-                                    repo.get_categories(CashType.Trade),
-                                    totals_row_by_category)
+    render_categories_and_summary(sb, repo, res, years, months, CashType.Trade, include_active, include_orderbook, False, totals_row_by_category)
+    render_summary_after_categories(sb, repo, res, years, months, repo.get_categories(CashType.Trade), totals_row_by_category)
 
-    # Money categories + summary
-    render_categories_and_summary(sb, repo, res, years, months, CashType.Money,
-                                  False, False, False,
-                                  totals_row_by_category)
-    render_summary_after_categories(sb, repo, res, years, months,
-                                    repo.get_categories(CashType.Money),
-                                    totals_row_by_category)
+    render_categories_and_summary(sb, repo, res, years, months, CashType.Money, False, False, False, totals_row_by_category)
+    render_summary_after_categories(sb, repo, res, years, months, repo.get_categories(CashType.Money), totals_row_by_category)
 
-    # Totals block for Trade
     render_summary_totals_block(sb, repo, res, CashType.Trade, totals_row_by_category)
-
-    # Totals-of-totals formulas
     render_totals_formula(sb, repo, res, years, months, totals_row_by_category)
 
-    # Tax categories + summary
-    render_categories_and_summary(sb, repo, res, years, months, CashType.Tax,
-                                  include_active, False, include_tax_accruals,
-                                  totals_row_by_category)
-    render_summary_after_categories(sb, repo, res, years, months,
-                                    repo.get_categories(CashType.Tax),
-                                    totals_row_by_category)
-
-    # Totals block for Tax
+    render_categories_and_summary(sb, repo, res, years, months, CashType.Tax, include_active, False, include_tax_accruals, totals_row_by_category)
+    render_summary_after_categories(sb, repo, res, years, months, repo.get_categories(CashType.Tax), totals_row_by_category)
     render_summary_totals_block(sb, repo, res, CashType.Tax, totals_row_by_category)
 
-    # Expressions
     render_expressions(sb, repo, res, years, months, totals_row_by_category)
 
     if include_bank_balances:
@@ -916,12 +1131,15 @@ def generate_ods(payload: dict) -> tuple[str, bytes]:
     if include_balance_sheet:
         render_balance_sheet(sb, repo, res, years, months)
 
-    doc = Document("spreadsheet")
-    doc.body.append(sb.table)
-    
-    _append_add_number_cell_check(doc) # verification via add_number_cell
+    return sb
 
-    freeze_first_rows(doc, table_name, freeze_row_index=4)  # no-op for now
+def save_cashflow(doc: Document, ctx: dict) -> tuple[str, bytes]:
+    table_name = ctx["table_name"]
+    lang = ctx["lang"]
+    country = ctx["country"]
+
+    # Keep working freeze logic
+    freeze_and_rename_active_sheet(doc, table_name, freeze_row_index=4)
 
     buf = io.BytesIO()
     try:
@@ -930,11 +1148,364 @@ def generate_ods(payload: dict) -> tuple[str, bytes]:
     except TypeError:
         content = doc.save()
 
-    # Apply Style Factory: set locale and strip default artifacts
+    # 1) Materialize semantic styles (NUM/PCT/CASH, maps, etc.)
     content = apply_styles_bytes(content, locale=(lang, country), strip_defaults=True)
 
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    # 2) Column-first totals borders 
+    months = ctx["months"]
+    years = ctx["years"]
+    content = _post_process_totals_borders(content, month_count=len(months), years_count=len(years))
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return f"Cash_Flow_{ts}.ods", content
+
+def _post_process_totals_borders(content: bytes, month_count: int, years_count: int) -> bytes:
+    import io, zipfile, re
+    from lxml import etree as ET
+
+    src_zip = zipfile.ZipFile(io.BytesIO(content), 'r')
+    namelist = src_zip.namelist()
+    if 'content.xml' not in namelist:
+        src_zip.close()
+        return content
+    content_xml = src_zip.read('content.xml')
+
+    ns = {
+        'office': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
+        'style': 'urn:oasis:names:tc:opendocument:xmlns:style:1.0',
+        'table': 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
+        'text': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
+        'number': 'urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0',
+        'fo': 'urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0',
+    }
+    root = ET.fromstring(content_xml)
+    auto_styles = root.find('office:automatic-styles', ns)
+    if auto_styles is None:
+        src_zip.close()
+        return content
+
+    def ensure_totals_default():
+        existing = auto_styles.find("style:style[@style:name='TotalsColDefaultCell'][@style:family='table-cell']", ns)
+        if existing is not None:
+            return
+        st = ET.Element(f"{{{ns['style']}}}style", {
+            f"{{{ns['style']}}}name": "TotalsColDefaultCell",
+            f"{{{ns['style']}}}family": "table-cell",
+            f"{{{ns['style']}}}parent-style-name": "Default"
+        })
+        props = ET.Element(f"{{{ns['style']}}}table-cell-properties")
+        props.set(f"{{{ns['fo']}}}border-left", "0.5pt solid #000000")
+        props.set(f"{{{ns['fo']}}}border-right", "1.5pt solid #000000")
+        st.append(props)
+        auto_styles.append(st)
+
+    def ensure_bordered_clone(src_style_name: str) -> str:
+        if not src_style_name:
+            return src_style_name
+        new_name = f"{src_style_name}_BORDERED"
+        existing = auto_styles.find(f"style:style[@style:name='{new_name}'][@style:family='table-cell']", ns)
+        if existing is not None:
+            return new_name
+        src = auto_styles.find(f"style:style[@style:name='{src_style_name}'][@style:family='table-cell']", ns)
+        if src is None:
+            return src_style_name
+        new = ET.fromstring(ET.tostring(src))
+        new.set(f"{{{ns['style']}}}name", new_name)
+        props = new.find('style:table-cell-properties', ns)
+        if props is None:
+            props = ET.Element(f"{{{ns['style']}}}table-cell-properties")
+            new.append(props)
+        props.set(f"{{{ns['fo']}}}border-left", "0.5pt solid #000000")
+        props.set(f"{{{ns['fo']}}}border-right", "1.5pt solid #000000")
+        auto_styles.append(new)
+        return new_name
+
+    def col_letters_to_index(letters: str) -> int:
+        idx = 0
+        for ch in letters.upper():
+            idx = idx * 26 + (ord(ch) - ord('A') + 1)
+        return idx
+
+    def find_cell_by_index(row_elem: ET._Element, col_index_1based: int):
+        count = 0
+        for child in row_elem:
+            if not hasattr(child, 'tag'):
+                continue
+            tag = child.tag
+            if not (tag.endswith('table-cell') or tag.endswith('covered-table-cell')):
+                continue
+            repeat = int(child.get(f"{{{ns['table']}}}number-columns-repeated", "1"))
+            next_count = count + repeat
+            if col_index_1based <= next_count:
+                return child
+            count = next_count
+        return None
+
+    def is_totals_col(col_index_1based: int) -> bool:
+        rel = col_index_1based - 4  # D=4 starts period grid
+        if rel < 0:
+            return False
+        block = month_count + 1
+        return (rel % block) == (block - 1)
+
+    def cash_root(style_name: str):
+        m = re.match(r'^(CASH\d+)_(?:POS_|NEG_)?CELL(?:_BORDERED)?$', (style_name or '').upper())
+        return m.group(1) if m else None
+
+    ensure_totals_default()
+
+    table = root.find('.//table:table', ns)
+    if table is None:
+        src_zip.close()
+        return content
+
+    total_period_cols = years_count * (month_count + 1)
+    total_visual_cols = 3 + total_period_cols
+
+    cols = table.findall('table:table-column', ns)
+    for i in range(total_period_cols):
+        col_1based = 4 + i
+        if col_1based - 1 >= len(cols):
+            break
+        if (i % (month_count + 1)) == month_count:
+            cols[col_1based - 1].set(f"{{{ns['table']}}}default-cell-style-name", "TotalsColDefaultCell")
+
+    rows = table.findall('table:table-row', ns)
+
+    # 1) Bordered clones for explicitly styled totals-column cells
+    for row in rows:
+        cells = row.findall('table:table-cell', ns)
+        for col_index_1based, cell in enumerate(cells, start=1):
+            if cell.tag.endswith('covered-table-cell'):
+                continue
+            if not is_totals_col(col_index_1based):
+                continue
+            sname = cell.get(f"{{{ns['table']}}}style-name") or ""
+            if sname:
+                bordered = ensure_bordered_clone(sname)
+                if bordered and bordered != sname:
+                    cell.set(f"{{{ns['table']}}}style-name", bordered)
+
+    # 2) Compute cached values: direct refs, SUM row-ranges, simple +/- refs, and SUM down a column
+    direct_ref_patterns = [
+        re.compile(r"^of:=\.?\$?([A-Za-z]+)\$?(\d+)$"),
+        re.compile(r"^of:=\[\.\$?([A-Za-z]+)\$?(\d+)\]$"),
+    ]
+    sum_row_patterns = [
+        re.compile(r"^of:=SUM\(\[\.\$?([A-Za-z]+)\$?(\d+):\.\$?([A-Za-z]+)\$?\2\]\)(\*\-1)?$"),
+        re.compile(r"^of:=SUM\(\$?([A-Za-z]+)\$?(\d+):\$?([A-Za-z]+)\$?\2\)(\*\-1)?$"),
+    ]
+    # New: SUM down a single column between two row indices, optional *-1
+    sum_col_patterns = [
+        re.compile(r"^of:=SUM\(\[\.\$?([A-Za-z]+)\$?(\d+):\.\$?\1\$(\d+)\]\)(\*\-1)?$"),
+        re.compile(r"^of:=SUM\(\$?([A-Za-z]+)\$?(\d+):\$?\1\$(\d+)\)(\*\-1)?$"),
+    ]
+    add_sub_pat = re.compile(r'([+\-]?)\s*(?:\[\.\$?([A-Za-z]+)\$?(\d+)\]|\$?([A-Za-z]+)\$?(\d+))')
+
+    for row in rows:
+        cells = row.findall('table:table-cell', ns)
+        for c_idx, cell in enumerate(cells, start=1):
+            if not is_totals_col(c_idx):
+                continue
+            formula = cell.get(f"{{{ns['table']}}}formula")
+            if not formula:
+                continue
+            computed = None
+
+            # Direct ref
+            for pat in direct_ref_patterns:
+                m = pat.match(formula)
+                if m:
+                    col_letters, row_num = m.group(1), int(m.group(2))
+                    ref_col = col_letters_to_index(col_letters)
+                    ref_row = rows[row_num - 1] if 1 <= row_num <= len(rows) else None
+                    ref_cell = find_cell_by_index(ref_row, ref_col) if ref_row is not None else None
+                    if ref_cell is not None:
+                        v = ref_cell.get(f"{{{ns['office']}}}value")
+                        if v is not None:
+                            try:
+                                computed = float(v)
+                            except ValueError:
+                                pass
+                    break
+            if computed is not None:
+                cell.set(f"{{{ns['office']}}}value-type", "float")
+                cell.set(f"{{{ns['office']}}}value", str(computed))
+                continue
+
+            # SUM of row-range (same row)
+            for pat in sum_row_patterns:
+                m = pat.match(formula)
+                if not m:
+                    continue
+                start_col, row_num, end_col = m.group(1), int(m.group(2)), m.group(3)
+                mult = -1.0 if (m.group(4) or "") == "*-1" else 1.0
+                if 1 <= row_num <= len(rows):
+                    start_ci = col_letters_to_index(start_col)
+                    end_ci = col_letters_to_index(end_col)
+                    if end_ci < start_ci:
+                        start_ci, end_ci = end_ci, start_ci
+                    ref_row = rows[row_num - 1]
+                    total = 0.0
+                    for ci in range(start_ci, end_ci + 1):
+                        rc = find_cell_by_index(ref_row, ci)
+                        if rc is None:
+                            continue
+                        v = rc.get(f"{{{ns['office']}}}value")
+                        if v is None:
+                            continue
+                        try:
+                            total += float(v)
+                        except ValueError:
+                            continue
+                    computed = total * mult
+                    break
+            if computed is not None:
+                cell.set(f"{{{ns['office']}}}value-type", "float")
+                cell.set(f"{{{ns['office']}}}value", str(computed))
+                continue
+
+            # SUM down a column between two row indices (category totals)
+            for pat in sum_col_patterns:
+                m = pat.match(formula)
+                if not m:
+                    continue
+                col_letters, start_row_num, end_row_num = m.group(1), int(m.group(2)), int(m.group(3))
+                mult = -1.0 if (m.group(4) or "") == "*-1" else 1.0
+                ref_ci = col_letters_to_index(col_letters)
+                total = 0.0
+                for rnum in range(min(start_row_num, end_row_num), max(start_row_num, end_row_num) + 1):
+                    ref_row = rows[rnum - 1] if 1 <= rnum <= len(rows) else None
+                    rc = find_cell_by_index(ref_row, ref_ci) if ref_row is not None else None
+                    if rc is None:
+                        continue
+                    v = rc.get(f"{{{ns['office']}}}value")
+                    if v is None:
+                        continue
+                    try:
+                        total += float(v)
+                    except ValueError:
+                        continue
+                computed = total * mult
+                break
+            if computed is not None:
+                cell.set(f"{{{ns['office']}}}value-type", "float")
+                cell.set(f"{{{ns['office']}}}value", str(computed))
+                continue
+
+            # +/- list of refs
+            total = 0.0
+            matched = False
+            for sign, c1, r1, c2, r2 in add_sub_pat.findall(formula):
+                matched = True
+                col_letters = c1 or c2
+                row_num = int(r1 or r2)
+                ref_col = col_letters_to_index(col_letters)
+                rc_row = rows[row_num - 1] if 1 <= row_num <= len(rows) else None
+                rc = find_cell_by_index(rc_row, ref_col) if rc_row is not None else None
+                if rc is None:
+                    continue
+                v = rc.get(f"{{{ns['office']}}}value")
+                if v is None:
+                    continue
+                try:
+                    valf = float(v)
+                except ValueError:
+                    continue
+                total += (-valf if sign == '-' else valf)
+            if matched:
+                cell.set(f"{{{ns['office']}}}value-type", "float")
+                cell.set(f"{{{ns['office']}}}value", str(total))
+
+    # 3) Enforce CASH POS/NEG bordered style from cached value
+    for row in rows:
+        cells = row.findall('table:table-cell', ns)
+        for col_index_1based, cell in enumerate(cells, start=1):
+            if not is_totals_col(col_index_1based):
+                continue
+            val_str = cell.get(f"{{{ns['office']}}}value")
+            vtype = cell.get(f"{{{ns['office']}}}value-type")
+            if vtype != "float" or val_str is None:
+                continue
+            try:
+                num = float(val_str)
+            except ValueError:
+                continue
+            sname = (cell.get(f"{{{ns['table']}}}style-name") or "").upper()
+            root_name = cash_root(sname)
+            if not root_name:
+                continue
+            pos = ensure_bordered_clone(f"{root_name}_POS_CELL")
+            neg = ensure_bordered_clone(f"{root_name}_NEG_CELL")
+            cell.set(f"{{{ns['table']}}}style-name", neg if num < 0 else pos)
+
+    # 4) Normalize spacer/short rows
+    for row in rows:
+        visual_cols = 0
+        children = list(row)
+        for child in children:
+            if not hasattr(child, 'tag'):
+                row.remove(child)
+                continue
+            tag = child.tag
+            if not (tag.endswith('table-cell') or tag.endswith('covered-table-cell')):
+                continue
+            repeat = int(child.get(f"{{{ns['table']}}}number-columns-repeated", "1"))
+            visual_cols += repeat
+        if visual_cols < total_visual_cols:
+            deficit = total_visual_cols - visual_cols
+            rc = ET.Element(f"{{{ns['table']}}}table-cell")
+            rc.set(f"{{{ns['table']}}}number-columns-repeated", str(deficit))
+            row.append(rc)
+
+    # 5) End-of-sheet repeater
+    rep = ET.Element(f"{{{ns['table']}}}table-row")
+    rep.set(f"{{{ns['table']}}}number-rows-repeated", "1048568")
+    rep_cell = ET.Element(f"{{{ns['table']}}}table-cell")
+    rep_cell.set(f"{{{ns['table']}}}number-columns-repeated", str(total_visual_cols))
+    rep.append(rep_cell)
+    table.append(rep)
+
+    # Final defensive cleanup
+    for elem in root.iter():
+        for child in list(elem):
+            if not hasattr(child, 'tag'):
+                elem.remove(child)
+
+    new_content_xml = ET.tostring(root, encoding='UTF-8', xml_declaration=True)
+
+    entries = {}
+    for name in namelist:
+        if name == 'content.xml':
+            continue
+        entries[name] = src_zip.read(name)
+    src_zip.close()
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w') as zf:
+        if 'mimetype' in entries:
+            zi = zipfile.ZipInfo('mimetype')
+            zi.compress_type = zipfile.ZIP_STORED
+            zf.writestr(zi, entries['mimetype'])
+            del entries['mimetype']
+        zf.writestr('content.xml', new_content_xml)
+        for name, data in entries.items():
+            zf.writestr(name, data)
+
+    return out.getvalue()
+
+def generate_ods(payload: dict) -> tuple[str, bytes]:
+
+    ctx = initialise_ods(payload)
+
+    doc = Document("spreadsheet")
+    doc = add_stylesheet(doc)
+
+    sb = SheetBuilder(name=ctx["table_name"])
+    sb = build_cashflow_table(sb, ctx)
+
+    doc.body.append(sb.table)
+    return save_cashflow(doc, ctx)
 
 if __name__ == "__main__":
     if len(sys.argv) >= 2:

@@ -13,14 +13,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{02EA681E-C
 		docs\requirements.md = docs\requirements.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Temp", "Temp", "{1818E450-91AB-4384-ABC3-2A09773BC9F3}"
-	ProjectSection(SolutionItems) = preProject
-		tests\ods\content.xml = tests\ods\content.xml
-		tests\ods\meta.xml = tests\ods\meta.xml
-		tests\ods\settings.xml = tests\ods\settings.xml
-		tests\ods\styles.xml = tests\ods\styles.xml
-	EndProjectSection
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
