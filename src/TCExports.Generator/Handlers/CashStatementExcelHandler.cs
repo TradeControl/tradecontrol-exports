@@ -1,4 +1,5 @@
-﻿using ClosedXML.Excel;
+using System.Globalization;
+using ClosedXML.Excel;
 using DocumentFormat.OpenXml.Spreadsheet;
 using TCExports.Generator.Contracts;
 using TCExports.Generator.Data;
@@ -55,10 +56,18 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
     /// </remarks>
     public async Task<ExportResult> HandleAsync(ExportPayload payload, CancellationToken ct)
     {
-        var active = await _repo.GetActivePeriodAsync(payload.SqlConnection, ct: ct);
-        var years = await _repo.GetActiveYearsAsync(payload.SqlConnection, ct: ct);
-        var months = await _repo.GetMonthsAsync(payload.SqlConnection, ct: ct);
-        var companyName = await _repo.GetCompanyNameAsync(payload.SqlConnection, ct: ct);
+        int commandTimeoutSeconds = 30;
+        if (payload.Params.TryGetValue("commandTimeout", out var ctStr)
+            && int.TryParse(ctStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            && parsed > 0)
+        {
+            commandTimeoutSeconds = parsed;
+        }
+
+        var active = await _repo.GetActivePeriodAsync(payload.SqlConnection, commandTimeoutSeconds, ct);
+        var years = await _repo.GetActiveYearsAsync(payload.SqlConnection, commandTimeoutSeconds, ct);
+        var months = await _repo.GetMonthsAsync(payload.SqlConnection, commandTimeoutSeconds, ct);
+        var companyName = await _repo.GetCompanyNameAsync(payload.SqlConnection, commandTimeoutSeconds, ct);
 
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Cash Flow");
@@ -73,42 +82,50 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         bool includeBalanceSheet = payload.Params.TryGetValue("includeBalanceSheet", out var ibs) && ibs == "true";
         bool includeBankBalances = payload.Params.TryGetValue("includeBankBalances", out var ibb) && ibb == "true";
 
-        var tradeCategories = await RenderCategoriesAsync(ws, payload.SqlConnection, years, months, CashType.Trade, includeActivePeriods, includeOrderBook, false, ct);
+        var tradeCategories = await RenderCategoriesAsync(
+            ws, payload.SqlConnection, years, months, CashType.Trade,
+            includeActivePeriods, includeOrderBook, false,
+            commandTimeoutSeconds, ct);
+
         RenderSummaryAfterCategories(ws, tradeCategories, years, months);
 
-        var moneyCategories = await RenderCategoriesAsync(ws, payload.SqlConnection, years, months, CashType.Money, false, false, false, ct);
+        var moneyCategories = await RenderCategoriesAsync(
+            ws, payload.SqlConnection, years, months, CashType.Money,
+            includeActivePeriods: false, includeOrderBook: false, includeTaxAccruals: false,
+            commandTimeoutSeconds, ct);
+
         RenderSummaryAfterCategories(ws, moneyCategories, years, months);
 
-        await RenderSummaryTotalsBlockAsync(ws, payload.SqlConnection, CashType.Trade, ct);
+        await RenderSummaryTotalsBlockAsync(ws, payload.SqlConnection, CashType.Trade, commandTimeoutSeconds, ct);
 
-        var taxCategories = await RenderCategoriesAsync(ws, payload.SqlConnection, years, months, CashType.Tax, includeActivePeriods, false, includeTaxAccruals, ct);
+        var taxCategories = await RenderCategoriesAsync(
+            ws, payload.SqlConnection, years, months, CashType.Tax,
+            includeActivePeriods, includeOrderBook: false, includeTaxAccruals,
+            commandTimeoutSeconds, ct);
+
         RenderSummaryAfterCategories(ws, taxCategories, years, months);
 
-        await RenderSummaryTotalsBlockAsync(ws, payload.SqlConnection, CashType.Tax, ct);
-        await RenderTotalsFormulaAsync(ws, payload.SqlConnection, ct);
-        await RenderExpressionsAsync(ws, payload.SqlConnection, ct);
+        await RenderSummaryTotalsBlockAsync(ws, payload.SqlConnection, CashType.Tax, commandTimeoutSeconds, ct);
+        await RenderTotalsFormulaAsync(ws, payload.SqlConnection, commandTimeoutSeconds, ct);
+        await RenderExpressionsAsync(ws, payload.SqlConnection, commandTimeoutSeconds, ct);
 
         if (includeBankBalances)
-            await RenderClosingBankBalanceAsync(ws, payload.SqlConnection, years, months, ct);
+            await RenderClosingBankBalanceAsync(ws, payload.SqlConnection, years, months, commandTimeoutSeconds, ct);
 
-        // VAT reporting (resource-driven) when requested
         if (includeVatDetails)
         {
-            await RenderVatRecurrenceTotalsAsync(ws, payload.SqlConnection, years, months, includeActivePeriods, includeTaxAccruals, ct);
-            await RenderVatPeriodTotalsAsync(ws, payload.SqlConnection, years, months, includeActivePeriods, includeTaxAccruals, ct);
+            await RenderVatRecurrenceTotalsAsync(ws, payload.SqlConnection, years, months, includeActivePeriods, includeTaxAccruals, commandTimeoutSeconds, ct);
+            await RenderVatPeriodTotalsAsync(ws, payload.SqlConnection, years, months, includeActivePeriods, includeTaxAccruals, commandTimeoutSeconds, ct);
         }
 
         if (includeBalanceSheet)
         {
-            await RenderBalanceSheetAsync(ws, payload.SqlConnection, years, months, ct);
-            // Equity reconciliation intentionally disabled until opening balances are introduced.
-            // await RenderEquityReconciliationAsync(ws, years, months);
+            await RenderBalanceSheetAsync(ws, payload.SqlConnection, years, months, commandTimeoutSeconds, ct);
         }
 
-        // Hide helper column C and enforce widths
         ws.Column(3).Hide();
-        ws.Column(1).Width = 9;   // A: Code
-        ws.Column(2).Width = 25;  // B: Name
+        ws.Column(1).Width = 9;
+        ws.Column(2).Width = 25;
         for (int col = 4; col <= lastCol; col++)
             ws.Column(col).Width = 9;
 
@@ -229,12 +246,13 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         bool includeActivePeriods,
         bool includeOrderBook,
         bool includeTaxAccruals,
+        int commandTimeoutSeconds,
         CancellationToken ct)
     {
         const int firstCol = 4;
         int curRow = ws.LastRowUsed()?.RowNumber() ?? 3;
 
-        var categories = await _repo.GetCategoriesAsync(connectionString, cashType, ct: ct);
+        var categories = await _repo.GetCategoriesAsync(connectionString, cashType, commandTimeoutSeconds, ct);
         foreach (var category in categories)
         {
             curRow += 2;
@@ -244,7 +262,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
 
             int startRow = curRow;
 
-            var cashCodes = await _repo.GetCashCodesAsync(connectionString, category.CategoryCode, ct: ct);
+            var cashCodes = await _repo.GetCashCodesAsync(connectionString, category.CategoryCode, commandTimeoutSeconds, ct);
             foreach (var code in cashCodes)
             {
                 curRow++;
@@ -265,7 +283,8 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
                         includeActivePeriods,
                         includeOrderBook,
                         includeTaxAccruals,
-                        ct: ct);
+                        commandTimeoutSeconds,
+                        ct);
 
                     for (int mIndex = 0; mIndex < months.Count; mIndex++)
                     {
@@ -309,9 +328,9 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
     /// <summary>
     /// Renders the totals block listing category codes marked as totals for the specified cash type.
     /// </summary>
-    private async Task RenderSummaryTotalsBlockAsync(IXLWorksheet ws, string connectionString, CashType cashType, CancellationToken ct)
+    private async Task RenderSummaryTotalsBlockAsync(IXLWorksheet ws, string connectionString, CashType cashType, int commandTimeoutSeconds, CancellationToken ct)
     {
-        var totals = await _repo.GetCategoriesByTypeAsync(connectionString, cashType, CategoryType.Total, ct: ct);
+        var totals = await _repo.GetCategoriesByTypeAsync(connectionString, cashType, CategoryType.Total, commandTimeoutSeconds, ct);
         if (totals.Count < 2) return;
 
         int curRow = (ws.LastRowUsed()?.RowNumber() ?? 3) + 2;
@@ -396,12 +415,13 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
     private async Task RenderTotalsFormulaAsync(
         IXLWorksheet ws,
         string connectionString,
+        int commandTimeoutSeconds,
         CancellationToken ct)
     {
         const int firstCol = 4;
         int lastCol = GetLastPeriodColumn(ws);
 
-        var totalCategories = await _repo.GetCategoryTotalsAsync(connectionString, ct: ct);
+        var totalCategories = await _repo.GetCategoryTotalsAsync(connectionString, commandTimeoutSeconds, ct);
         if (totalCategories.Count == 0) return;
 
         foreach (var total in totalCategories)
@@ -409,7 +429,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             int targetRow = FindCategoryTotalsRow(ws, total.CategoryCode);
             if (targetRow <= 0) continue;
 
-            var sumCodes = await _repo.GetCategoryTotalCodesAsync(connectionString, total.CategoryCode, ct: ct);
+            var sumCodes = await _repo.GetCategoryTotalCodesAsync(connectionString, total.CategoryCode, commandTimeoutSeconds, ct);
             if (sumCodes.Count == 0) continue;
 
             for (int col = firstCol; col <= lastCol; col++)
@@ -436,9 +456,9 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
     /// Renders analysis expressions (custom formulas referencing category totals),
     /// and reports syntax errors back to the repository.
     /// </summary>
-    private async Task RenderExpressionsAsync(IXLWorksheet ws, string connectionString, CancellationToken ct)
+    private async Task RenderExpressionsAsync(IXLWorksheet ws, string connectionString, int commandTimeoutSeconds, CancellationToken ct)
     {
-        var exprs = await _repo.GetCategoryExpressionsAsync(connectionString, ct: ct);
+        var exprs = await _repo.GetCategoryExpressionsAsync(connectionString, commandTimeoutSeconds, ct);
         if (exprs.Count == 0) return;
 
         int curRow = (ws.LastRowUsed()?.RowNumber() ?? 3) + 2;
@@ -459,7 +479,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
 
             ws.Cell(curRow, 1).Value = expr.Category ?? string.Empty;
 
-            string exprCategoryCode = await _repo.GetCategoryCodeFromNameAsync(connectionString, expr.Category ?? string.Empty, ct: ct);
+            string exprCategoryCode = await _repo.GetCategoryCodeFromNameAsync(connectionString, expr.Category ?? string.Empty, commandTimeoutSeconds, ct);
             if (!string.IsNullOrWhiteSpace(exprCategoryCode))
             {
                 ws.Cell(curRow, 3).FormulaA1 = $"=\"{exprCategoryCode}\"";
@@ -491,7 +511,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             var nameToCode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var name in tokens)
             {
-                var code = await _repo.GetCategoryCodeFromNameAsync(connectionString, name, ct: ct);
+                var code = await _repo.GetCategoryCodeFromNameAsync(connectionString, name, commandTimeoutSeconds, ct);
                 if (string.IsNullOrWhiteSpace(code)) code = name;
                 nameToCode[name] = code;
             }
@@ -533,7 +553,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             {
                 bool isError = errors.Count > 0;
                 string? errorMessage = isError ? string.Join("; ", errors.Distinct()) : null;
-                await _repo.SetCategoryExpressionStatusAsync(connectionString, exprCategoryCode, isError, errorMessage, ct: ct);
+                await _repo.SetCategoryExpressionStatusAsync(connectionString, exprCategoryCode, isError, errorMessage, commandTimeoutSeconds, ct);
             }
         }
 
@@ -548,6 +568,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         string connectionString,
         IReadOnlyList<ActiveYearDto> years,
         IReadOnlyList<MonthDto> months,
+        int commandTimeoutSeconds,
         CancellationToken ct)
     {
         int curRow = (ws.LastRowUsed()?.RowNumber() ?? 3) + 2;
@@ -561,7 +582,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         const int firstCol = 4;
         int lastCol = GetLastPeriodColumn(ws);
 
-        var accounts = await _repo.GetBankAccountsAsync(connectionString, ct: ct);
+        var accounts = await _repo.GetBankAccountsAsync(connectionString, commandTimeoutSeconds, ct);
         if (accounts.Count == 0)
         {
             curRow++;
@@ -573,7 +594,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         foreach (var acct in accounts)
         {
             var map = new Dictionary<(short, byte), decimal>();
-            var balances = await _repo.GetBankBalancesAsync(connectionString, acct.AccountCode, ct: ct);
+            var balances = await _repo.GetBankBalancesAsync(connectionString, acct.AccountCode, commandTimeoutSeconds, ct);
             foreach (var b in balances)
             {
                 var key = (b.YearNumber, b.MonthNumber);
@@ -638,10 +659,11 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         IReadOnlyList<MonthDto> months,
         bool includeActivePeriods,
         bool includeTaxAccruals,
+        int commandTimeoutSeconds,
         CancellationToken ct)
     {
         int curRow = (ws.LastRowUsed()?.RowNumber() ?? 3) + 2;
-        var vatType = await _repo.GetVatRecurrenceTypeAsync(connectionString, ct: ct);
+        var vatType = await _repo.GetVatRecurrenceTypeAsync(connectionString, commandTimeoutSeconds, ct);
         ws.Cell(curRow, 1).Value = $"{Properties.Resources.TextVatDueTitle} {vatType}".ToUpperInvariant();
         ws.Row(curRow).Style.Font.Bold = true;
         ws.Row(curRow).Style.Border.TopBorder = XLBorderStyleValues.Thin;
@@ -674,7 +696,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         short currentYear = 0;
         int blockStartCol = firstCol;
 
-        var recurrence = await _repo.GetVatRecurrenceAsync(connectionString, ct: ct);
+        var recurrence = await _repo.GetVatRecurrenceAsync(connectionString, commandTimeoutSeconds, ct);
         foreach (var p in recurrence)
         {
             if (currentYear == 0)
@@ -720,7 +742,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
 
         if (includeTaxAccruals)
         {
-            var accruals = await _repo.GetVatRecurrenceAccrualsAsync(connectionString, ct: ct);
+            var accruals = await _repo.GetVatRecurrenceAccrualsAsync(connectionString, commandTimeoutSeconds, ct);
             short accrualYear = 0;
             int accrualCol = firstCol;
             foreach (var a in accruals)
@@ -755,6 +777,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         IReadOnlyList<MonthDto> months,
         bool includeActivePeriods,
         bool includeTaxAccruals,
+        int commandTimeoutSeconds,
         CancellationToken ct)
     {
         int curRow = (ws.LastRowUsed()?.RowNumber() ?? 3) + 2;
@@ -791,7 +814,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         short currentYear = 0;
         int blockStartCol = firstCol;
 
-        var monthlyTotals = await _repo.GetVatPeriodTotalsAsync(connectionString, ct: ct);
+        var monthlyTotals = await _repo.GetVatPeriodTotalsAsync(connectionString, commandTimeoutSeconds, ct);
         foreach (var p in monthlyTotals)
         {
             if (currentYear == 0)
@@ -837,7 +860,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
 
         if (includeTaxAccruals)
         {
-            var accruals = await _repo.GetVatPeriodAccrualsAsync(connectionString, ct: ct);
+            var accruals = await _repo.GetVatPeriodAccrualsAsync(connectionString, commandTimeoutSeconds, ct);
             short accrualYear = 0;
             int accrualCol = firstCol;
             foreach (var a in accruals)
@@ -871,9 +894,10 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         string connectionString,
         IReadOnlyList<ActiveYearDto> years,
         IReadOnlyList<MonthDto> months,
+        int commandTimeoutSeconds,
         CancellationToken ct)
     {
-        var entries = await _repo.GetBalanceSheetAsync(connectionString, ct: ct);
+        var entries = await _repo.GetBalanceSheetAsync(connectionString, commandTimeoutSeconds, ct);
         if (entries.Count == 0) return;
 
         int curRow = (ws.LastRowUsed()?.RowNumber() ?? 3) + 2;
