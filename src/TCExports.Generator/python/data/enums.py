@@ -1,4 +1,4 @@
-﻿from enum import IntEnum
+from enum import IntEnum
 
 class EventLogType(IntEnum):
     Error = 0
@@ -25,7 +25,7 @@ class CategoryType(IntEnum):
     Expression = 2
 
 class TaxType(IntEnum):
-    CorporationTax = 0
+    BusinessTax = 0
     Vat = 1
     NI = 2
     General = 3

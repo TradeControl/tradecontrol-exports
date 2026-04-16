@@ -1,4 +1,4 @@
-﻿using TCExports.Generator.Contracts;
+using TCExports.Generator.Contracts;
 
 namespace TCExports.Generator.Data;
 
@@ -48,4 +48,6 @@ public interface ICashFlowRepository
     Task<IReadOnlyList<VatPeriodAccrualDto>> GetVatPeriodAccrualsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 
     Task<IReadOnlyList<BalanceSheetEntryDto>> GetBalanceSheetAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+
+    Task<IReadOnlyList<EquityReconciliationByYearDto>> GetEquityReconciliationByYearAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 }

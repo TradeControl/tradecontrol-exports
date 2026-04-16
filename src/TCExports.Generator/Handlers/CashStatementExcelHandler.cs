@@ -134,6 +134,13 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
 
         SettingsSheetBuilder.AddSettingsWorksheet(wb, payload);
 
+        var includeReconciliation =
+            payload.Params.TryGetValue("includeReconciliation", out var ir)
+            && ir.Equals("true", StringComparison.OrdinalIgnoreCase);
+
+        if (includeReconciliation)
+            await ReconciliationSheetBuilder.AddReconciliationWorksheetAsync(wb, _repo, payload.SqlConnection, commandTimeoutSeconds, ct);
+
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
 
