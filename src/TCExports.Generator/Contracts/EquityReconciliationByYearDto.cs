@@ -13,7 +13,7 @@ public sealed class EquityReconciliationByYearDto
     public decimal ProfitAfterTax { get; init; }
 
     public decimal CapitalMovement { get; init; }
-    public decimal OpeningPosition { get; init; }
+    public decimal OpeningSubjectPosition { get; init; }
     public decimal OpeningAccountPosition { get; init; }
 
     public decimal CapitalDelta { get; init; }

@@ -27,7 +27,7 @@ public sealed partial class SqlServerCashFlowRepository
                 BusinessTax,
                 ProfitAfterTax,
                 CapitalMovement,
-                OpeningPosition,
+                OpeningSubjectPosition,
                 OpeningAccountPosition,
                 CapitalDelta,
                 Variance
@@ -52,7 +52,7 @@ public sealed partial class SqlServerCashFlowRepository
                 BusinessTax = reader.GetDecimal(5),
                 ProfitAfterTax = reader.GetDecimal(6),
                 CapitalMovement = reader.GetDecimal(7),
-                OpeningPosition = reader.GetDecimal(8),
+                OpeningSubjectPosition = reader.GetDecimal(8),
                 OpeningAccountPosition = reader.GetDecimal(9),
                 CapitalDelta = reader.GetDecimal(10),
                 Variance = reader.GetDecimal(11)

@@ -34,7 +34,7 @@ public static class ReconciliationSheetBuilder
         ws.Cell(4, 6).Value = "BusinessTax";
         ws.Cell(4, 7).Value = "ProfitAfterTax";
         ws.Cell(4, 8).Value = "CapitalMovement";
-        ws.Cell(4, 9).Value = "OpeningPosition";
+        ws.Cell(4, 9).Value = "OpeningSubjectPosition";
         ws.Cell(4, 10).Value = "OpeningAccountPosition";
         ws.Cell(4, 11).Value = "CapitalDelta";
 
@@ -61,11 +61,11 @@ public static class ReconciliationSheetBuilder
             ws.Cell(r, 6).Value = row.BusinessTax;
             ws.Cell(r, 7).Value = row.ProfitAfterTax;
             ws.Cell(r, 8).Value = row.CapitalMovement;
-            ws.Cell(r, 9).Value = row.OpeningPosition;
+            ws.Cell(r, 9).Value = row.OpeningSubjectPosition;
             ws.Cell(r, 10).Value = row.OpeningAccountPosition;
             ws.Cell(r, 11).Value = row.CapitalDelta;
 
-            ws.Cell(r, 13).FormulaA1 = $"=G{r}+H{r}+I{r}+J{r}";
+            ws.Cell(r, 13).FormulaA1 = $"=G{r}+H{r}+J{r}";
             ws.Cell(r, 14).FormulaA1 = $"=K{r}-M{r}";
             ws.Cell(r, 15).FormulaA1 =
                 $"=IF(ABS(N{r})<= $B$2, \"PASS\", IF(ABS(N{r})<= ($B$2*10), \"WARN\", \"FAIL\"))";
