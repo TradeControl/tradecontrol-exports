@@ -8,16 +8,15 @@ public sealed class VatRecurrenceDto
 {
     public short YearNumber { get; init; }
     public DateTime StartOn { get; init; }
-    public decimal HomeSales { get; init; }
-    public decimal HomePurchases { get; init; }
-    public decimal ExportSales { get; init; }
-    public decimal ExportPurchases { get; init; }
-    public decimal HomeSalesVat { get; init; }
-    public decimal HomePurchasesVat { get; init; }
-    public decimal ExportSalesVat { get; init; }
-    public decimal ExportPurchasesVat { get; init; }
-    public decimal VatAdjustment { get; init; }
-    public decimal VatDue { get; init; }
+    public decimal VatDueSales { get; init; }
+    public decimal VatDueAcquisitions { get; init; }
+    public decimal TotalVatDue { get; init; }
+    public decimal VatReclaimedCurrPeriod { get; init; }
+    public decimal NetVatDue { get; init; }
+    public decimal TotalValueSalesExVAT { get; init; }
+    public decimal TotalValuePurchasesExVAT { get; init; }
+    public decimal TotalValueGoodsSuppliedExVAT { get; init; }
+    public decimal TotalValueGoodsReceivedExVAT { get; init; }
 }
 
 /// <summary>
@@ -27,11 +26,16 @@ public sealed class VatRecurrenceDto
 public sealed class VatRecurrenceAccrualDto
 {
     public short YearNumber { get; init; }
-    public decimal? HomeSalesVat { get; init; }
-    public decimal? HomePurchasesVat { get; init; }
-    public decimal? ExportSalesVat { get; init; }
-    public decimal? ExportPurchasesVat { get; init; }
-    public decimal? VatDue { get; init; }
+    public DateTime StartOn { get; init; }
+    public decimal? VatDueSales { get; init; }
+    public decimal? VatDueAcquisitions { get; init; }
+    public decimal? TotalVatDue { get; init; }
+    public decimal? VatReclaimedCurrPeriod { get; init; }
+    public decimal? NetVatDue { get; init; }
+    public decimal? TotalValueSalesExVAT { get; init; }
+    public decimal? TotalValuePurchasesExVAT { get; init; }
+    public decimal? TotalValueGoodsSuppliedExVAT { get; init; }
+    public decimal? TotalValueGoodsReceivedExVAT { get; init; }
 }
 
 /// <summary>
@@ -42,15 +46,15 @@ public sealed class VatPeriodTotalDto
 {
     public short YearNumber { get; init; }
     public DateTime StartOn { get; init; }
-    public decimal HomeSales { get; init; }
-    public decimal HomePurchases { get; init; }
-    public decimal ExportSales { get; init; }
-    public decimal ExportPurchases { get; init; }
-    public decimal HomeSalesVat { get; init; }
-    public decimal HomePurchasesVat { get; init; }
-    public decimal ExportSalesVat { get; init; }
-    public decimal ExportPurchasesVat { get; init; }
-    public decimal VatDue { get; init; }
+    public decimal VatDueSales { get; init; }
+    public decimal VatDueAcquisitions { get; init; }
+    public decimal TotalVatDue { get; init; }
+    public decimal VatReclaimedCurrPeriod { get; init; }
+    public decimal NetVatDue { get; init; }
+    public decimal TotalValueSalesExVAT { get; init; }
+    public decimal TotalValuePurchasesExVAT { get; init; }
+    public decimal TotalValueGoodsSuppliedExVAT { get; init; }
+    public decimal TotalValueGoodsReceivedExVAT { get; init; }
 }
 
 /// <summary>
@@ -60,9 +64,14 @@ public sealed class VatPeriodTotalDto
 public sealed class VatPeriodAccrualDto
 {
     public short YearNumber { get; init; }
-    public decimal? HomeSalesVat { get; init; }
-    public decimal? HomePurchasesVat { get; init; }
-    public decimal? ExportSalesVat { get; init; }
-    public decimal? ExportPurchasesVat { get; init; }
-    public decimal? VatDue { get; init; }
+    public DateTime StartOn { get; init; }
+    public decimal? VatDueSales { get; init; }
+    public decimal? VatDueAcquisitions { get; init; }
+    public decimal? TotalVatDue { get; init; }
+    public decimal? VatReclaimedCurrPeriod { get; init; }
+    public decimal? NetVatDue { get; init; }
+    public decimal? TotalValueSalesExVAT { get; init; }
+    public decimal? TotalValuePurchasesExVAT { get; init; }
+    public decimal? TotalValueGoodsSuppliedExVAT { get; init; }
+    public decimal? TotalValueGoodsReceivedExVAT { get; init; }
 }

@@ -621,29 +621,29 @@ def render_vat_recurrence_totals(sb: SheetBuilder, repo, res, years, months, inc
     sb.append_row(hdr)
 
     labels = [
-        res.t("TextVatHomeSales"),
-        res.t("TextVatHomePurchases"),
-        res.t("TextVatExportSales"),
-        res.t("TextVatExportPurchases"),
-        res.t("TextVatHomeSalesVat"),
-        res.t("TextVatHomePurchasesVat"),
-        res.t("TextVatExportSalesVat"),
-        res.t("TextVatExportPurchasesVat"),
-        res.t("TextVatAdjustment"),
-        res.t("TextVatDue")
+        "VAT DUE SALES",
+        "VAT DUE ACQUISITIONS",
+        "TOTAL VAT DUE",
+        "VAT RECLAIMED CURRENT PERIOD",
+        "NET VAT DUE",
+        "TOTAL VALUE SALES EX VAT",
+        "TOTAL VALUE PURCHASES EX VAT",
+        "TOTAL VALUE GOODS SUPPLIED EX VAT",
+        "TOTAL VALUE GOODS RECEIVED EX VAT"
     ]
 
     recurrence = repo.get_vat_recurrence()
     by_year = {}
+    by_start_on = {}
     for p in recurrence:
         y = int(p.get("YearNumber"))
         by_year.setdefault(y, []).append(p)
+        by_start_on[p.get("StartOn")] = p
 
-    accruals_by_year = {}
+    accruals_by_start_on = {}
     if include_tax_accruals:
         for a in repo.get_vat_recurrence_accruals():
-            y = int(a.get("YearNumber"))
-            accruals_by_year.setdefault(y, []).append(a)
+            accruals_by_start_on[a.get("StartOn")] = a
 
     for li, label in enumerate(labels):
         r = Row()
@@ -662,30 +662,32 @@ def render_vat_recurrence_totals(sb: SheetBuilder, repo, res, years, months, inc
                 if isinstance(start_on, datetime) and start_on.tzinfo is None:
                     start_on = start_on.replace(tzinfo=timezone.utc)
                 if include_active_periods or (start_on <= datetime.now(timezone.utc)):
-                    if li == 0: v = float(p.get("HomeSales", 0) or 0)
-                    elif li == 1: v = float(p.get("HomePurchases", 0) or 0)
-                    elif li == 2: v = float(p.get("ExportSales", 0) or 0)
-                    elif li == 3: v = float(p.get("ExportPurchases", 0) or 0)
-                    elif li == 4: v = float(p.get("HomeSalesVat", 0) or 0)
-                    elif li == 5: v = float(p.get("HomePurchasesVat", 0) or 0)
-                    elif li == 6: v = float(p.get("ExportSalesVat", 0) or 0)
-                    elif li == 7: v = float(p.get("ExportPurchasesVat", 0) or 0)
-                    elif li == 8: v = float(p.get("VatAdjustment", 0) or 0)
-                    elif li == 9: v = float(p.get("VatDue", 0) or 0)
-                period_vals.append(v)
+                    if li == 0: v = float(p.get("vatDueSales", 0) or 0)
+                    elif li == 1: v = float(p.get("vatDueAcquisitions", 0) or 0)
+                    elif li == 2: v = float(p.get("totalVatDue", 0) or 0)
+                    elif li == 3: v = float(p.get("vatReclaimedCurrPeriod", 0) or 0)
+                    elif li == 4: v = float(p.get("netVatDue", 0) or 0)
+                    elif li == 5: v = float(p.get("totalValueSalesExVAT", 0) or 0)
+                    elif li == 6: v = float(p.get("totalValuePurchasesExVAT", 0) or 0)
+                    elif li == 7: v = float(p.get("totalValueGoodsSuppliedExVAT", 0) or 0)
+                    elif li == 8: v = float(p.get("totalValueGoodsReceivedExVAT", 0) or 0)
 
-            if include_tax_accruals and li in (4, 5, 6, 7, 9):
-                accs = accruals_by_year.get(ynum, [])
-                for idx, a in enumerate(accs):
-                    if idx >= len(period_vals):
-                        break
-                    add_val = 0.0
-                    if li == 4 and a.get("HomeSalesVat") is not None: add_val = float(a.get("HomeSalesVat"))
-                    elif li == 5 and a.get("HomePurchasesVat") is not None: add_val = float(a.get("HomePurchasesVat"))
-                    elif li == 6 and a.get("ExportSalesVat") is not None: add_val = float(a.get("ExportSalesVat"))
-                    elif li == 7 and a.get("ExportPurchasesVat") is not None: add_val = float(a.get("ExportPurchasesVat"))
-                    elif li == 9 and a.get("VatDue") is not None: add_val = float(a.get("VatDue"))
-                    period_vals[idx] += add_val
+                if include_tax_accruals:
+                    acc = accruals_by_start_on.get(p.get("StartOn"))
+                    if acc is not None:
+                        add_val = 0.0
+                        if li == 0 and acc.get("vatDueSales") is not None: add_val = float(acc.get("vatDueSales"))
+                        elif li == 1 and acc.get("vatDueAcquisitions") is not None: add_val = float(acc.get("vatDueAcquisitions"))
+                        elif li == 2 and acc.get("totalVatDue") is not None: add_val = float(acc.get("totalVatDue"))
+                        elif li == 3 and acc.get("vatReclaimedCurrPeriod") is not None: add_val = float(acc.get("vatReclaimedCurrPeriod"))
+                        elif li == 4 and acc.get("netVatDue") is not None: add_val = float(acc.get("netVatDue"))
+                        elif li == 5 and acc.get("totalValueSalesExVAT") is not None: add_val = float(acc.get("totalValueSalesExVAT"))
+                        elif li == 6 and acc.get("totalValuePurchasesExVAT") is not None: add_val = float(acc.get("totalValuePurchasesExVAT"))
+                        elif li == 7 and acc.get("totalValueGoodsSuppliedExVAT") is not None: add_val = float(acc.get("totalValueGoodsSuppliedExVAT"))
+                        elif li == 8 and acc.get("totalValueGoodsReceivedExVAT") is not None: add_val = float(acc.get("totalValueGoodsReceivedExVAT"))
+                        v += add_val
+
+                period_vals.append(v)
 
             for v in period_vals:
                 add_number_cell(r, v)
@@ -703,32 +705,33 @@ def render_vat_period_totals(sb: SheetBuilder, repo, res, years, months, include
     sb.append_row(hdr)
 
     labels = [
-        res.t("TextVatHomeSales"),
-        res.t("TextVatHomePurchases"),
-        res.t("TextVatExportSales"),
-        res.t("TextVatExportPurchases"),
-        res.t("TextVatHomeSalesVat"),
-        res.t("TextVatHomePurchasesVat"),
-        res.t("TextVatExportSalesVat"),
-        res.t("TextVatExportPurchasesVat"),
-        res.t("TextVatDue")
+        "VAT DUE SALES",
+        "VAT DUE ACQUISITIONS",
+        "TOTAL VAT DUE",
+        "VAT RECLAIMED CURRENT PERIOD",
+        "NET VAT DUE",
+        "TOTAL VALUE SALES EX VAT",
+        "TOTAL VALUE PURCHASES EX VAT",
+        "TOTAL VALUE GOODS SUPPLIED EX VAT",
+        "TOTAL VALUE GOODS RECEIVED EX VAT"
     ]
 
     monthly = repo.get_vat_period_totals()
     by_year = {}
+    by_start_on = {}
     for p in monthly:
         y = int(p.get("YearNumber"))
         by_year.setdefault(y, []).append(p)
+        by_start_on[p.get("StartOn")] = p
 
-    accruals_by_year = {}
+    accruals_by_start_on = {}
     if include_tax_accruals:
         for a in repo.get_vat_period_accruals():
-            y = int(a.get("YearNumber"))
-            accruals_by_year.setdefault(y, []).append(a)
+            accruals_by_start_on[a.get("StartOn")] = a
 
     for li, label in enumerate(labels):
         r = Row()
-        add_text_cell(r, label.upper() if li == len(labels) - 1 else label.upper())
+        add_text_cell(r, label.upper())
         add_text_cell(r, "")
         r.append(Cell())
 
@@ -750,29 +753,31 @@ def render_vat_period_totals(sb: SheetBuilder, repo, res, years, months, include
                     if idx is None:
                         continue
                     v = 0.0
-                    if li == 0: v = float(p.get("HomeSales", 0) or 0)
-                    elif li == 1: v = float(p.get("HomePurchases", 0) or 0)
-                    elif li == 2: v = float(p.get("ExportSales", 0) or 0)
-                    elif li == 3: v = float(p.get("ExportPurchases", 0) or 0)
-                    elif li == 4: v = float(p.get("HomeSalesVat", 0) or 0)
-                    elif li == 5: v = float(p.get("HomePurchasesVat", 0) or 0)
-                    elif li == 6: v = float(p.get("ExportSalesVat", 0) or 0)
-                    elif li == 7: v = float(p.get("ExportPurchasesVat", 0) or 0)
-                    elif li == 8: v = float(p.get("VatDue", 0) or 0)
+                    if li == 0: v = float(p.get("vatDueSales", 0) or 0)
+                    elif li == 1: v = float(p.get("vatDueAcquisitions", 0) or 0)
+                    elif li == 2: v = float(p.get("totalVatDue", 0) or 0)
+                    elif li == 3: v = float(p.get("vatReclaimedCurrPeriod", 0) or 0)
+                    elif li == 4: v = float(p.get("netVatDue", 0) or 0)
+                    elif li == 5: v = float(p.get("totalValueSalesExVAT", 0) or 0)
+                    elif li == 6: v = float(p.get("totalValuePurchasesExVAT", 0) or 0)
+                    elif li == 7: v = float(p.get("totalValueGoodsSuppliedExVAT", 0) or 0)
+                    elif li == 8: v = float(p.get("totalValueGoodsReceivedExVAT", 0) or 0)
                     month_vals[idx] += v
 
-            if include_tax_accruals and li in (4, 5, 6, 7, 8):
-                accs = accruals_by_year.get(ynum, [])
-                for idx, a in enumerate(accs):
-                    if idx >= len(month_vals):
-                        break
-                    add_val = 0.0
-                    if li == 4 and a.get("HomeSalesVat") is not None: add_val = float(a.get("HomeSalesVat"))
-                    elif li == 5 and a.get("HomePurchasesVat") is not None: add_val = float(a.get("HomePurchasesVat"))
-                    elif li == 6 and a.get("ExportSalesVat") is not None: add_val = float(a.get("ExportSalesVat"))
-                    elif li == 7 and a.get("ExportPurchasesVat") is not None: add_val = float(a.get("ExportPurchasesVat"))
-                    elif li == 8 and a.get("VatDue") is not None: add_val = float(a.get("VatDue"))
-                    month_vals[idx] += add_val
+                    if include_tax_accruals:
+                        acc = accruals_by_start_on.get(p.get("StartOn"))
+                        if acc is not None:
+                            add_val = 0.0
+                            if li == 0 and acc.get("vatDueSales") is not None: add_val = float(acc.get("vatDueSales"))
+                            elif li == 1 and acc.get("vatDueAcquisitions") is not None: add_val = float(acc.get("vatDueAcquisitions"))
+                            elif li == 2 and acc.get("totalVatDue") is not None: add_val = float(acc.get("totalVatDue"))
+                            elif li == 3 and acc.get("vatReclaimedCurrPeriod") is not None: add_val = float(acc.get("vatReclaimedCurrPeriod"))
+                            elif li == 4 and acc.get("netVatDue") is not None: add_val = float(acc.get("netVatDue"))
+                            elif li == 5 and acc.get("totalValueSalesExVAT") is not None: add_val = float(acc.get("totalValueSalesExVAT"))
+                            elif li == 6 and acc.get("totalValuePurchasesExVAT") is not None: add_val = float(acc.get("totalValuePurchasesExVAT"))
+                            elif li == 7 and acc.get("totalValueGoodsSuppliedExVAT") is not None: add_val = float(acc.get("totalValueGoodsSuppliedExVAT"))
+                            elif li == 8 and acc.get("totalValueGoodsReceivedExVAT") is not None: add_val = float(acc.get("totalValueGoodsReceivedExVAT"))
+                            month_vals[idx] += add_val
 
             for v in month_vals:
                 add_number_cell(r, v)

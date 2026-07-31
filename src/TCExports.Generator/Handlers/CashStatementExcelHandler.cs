@@ -681,19 +681,18 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         int startRow = curRow + 1;
         var labels = new[]
         {
-            Properties.Resources.TextVatHomeSales,
-            Properties.Resources.TextVatHomePurchases,
-            Properties.Resources.TextVatExportSales,
-            Properties.Resources.TextVatExportPurchases,
-            Properties.Resources.TextVatHomeSalesVat,
-            Properties.Resources.TextVatHomePurchasesVat,
-            Properties.Resources.TextVatExportSalesVat,
-            Properties.Resources.TextVatExportPurchasesVat,
-            Properties.Resources.TextVatAdjustment,
-            Properties.Resources.TextVatDue
+            "VAT DUE SALES",
+            "VAT DUE ACQUISITIONS",
+            "TOTAL VAT DUE",
+            "VAT RECLAIMED CURRENT PERIOD",
+            "NET VAT DUE",
+            "TOTAL VALUE SALES EX VAT",
+            "TOTAL VALUE PURCHASES EX VAT",
+            "TOTAL VALUE GOODS SUPPLIED EX VAT",
+            "TOTAL VALUE GOODS RECEIVED EX VAT"
         };
         for (int i = 0; i < labels.Length; i++)
-            ws.Cell(startRow + i, 1).Value = labels[i].ToUpperInvariant();
+            ws.Cell(startRow + i, 1).Value = labels[i];
         ws.Row(startRow + labels.Length - 1).Style.Font.Bold = true;
         ws.Row(startRow + labels.Length - 1).Style.Border.BottomBorder = XLBorderStyleValues.Thick;
         ws.Row(startRow).Style.Border.TopBorder = XLBorderStyleValues.Thin;
@@ -725,16 +724,15 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
 
             if (includeActivePeriods || p.StartOn <= DateTime.UtcNow)
             {
-                ws.Cell(startRow + 0, curCol).Value = p.HomeSales;
-                ws.Cell(startRow + 1, curCol).Value = p.HomePurchases;
-                ws.Cell(startRow + 2, curCol).Value = p.ExportSales;
-                ws.Cell(startRow + 3, curCol).Value = p.ExportPurchases;
-                ws.Cell(startRow + 4, curCol).Value = p.HomeSalesVat;
-                ws.Cell(startRow + 5, curCol).Value = p.HomePurchasesVat;
-                ws.Cell(startRow + 6, curCol).Value = p.ExportSalesVat;
-                ws.Cell(startRow + 7, curCol).Value = p.ExportPurchasesVat;
-                ws.Cell(startRow + 8, curCol).Value = p.VatAdjustment;
-                ws.Cell(startRow + 9, curCol).Value = p.VatDue;
+                ws.Cell(startRow + 0, curCol).Value = p.VatDueSales;
+                ws.Cell(startRow + 1, curCol).Value = p.VatDueAcquisitions;
+                ws.Cell(startRow + 2, curCol).Value = p.TotalVatDue;
+                ws.Cell(startRow + 3, curCol).Value = p.VatReclaimedCurrPeriod;
+                ws.Cell(startRow + 4, curCol).Value = p.NetVatDue;
+                ws.Cell(startRow + 5, curCol).Value = p.TotalValueSalesExVAT;
+                ws.Cell(startRow + 6, curCol).Value = p.TotalValuePurchasesExVAT;
+                ws.Cell(startRow + 7, curCol).Value = p.TotalValueGoodsSuppliedExVAT;
+                ws.Cell(startRow + 8, curCol).Value = p.TotalValueGoodsReceivedExVAT;
             }
             else
             {
@@ -750,26 +748,21 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         if (includeTaxAccruals)
         {
             var accruals = await _repo.GetVatRecurrenceAccrualsAsync(connectionString, commandTimeoutSeconds, ct);
-            short accrualYear = 0;
-            int accrualCol = firstCol;
             foreach (var a in accruals)
             {
-                if (accrualYear == 0)
-                    accrualYear = a.YearNumber;
+                int targetCol = FindVatColumnForStartOn(recurrence, a.StartOn, firstCol);
+                if (targetCol < firstCol)
+                    continue;
 
-                if (accrualYear != a.YearNumber)
-                {
-                    accrualYear = a.YearNumber;
-                    accrualCol++;
-                }
-
-                AddDecimal(ws, startRow + 4, accrualCol, a.HomeSalesVat);
-                AddDecimal(ws, startRow + 5, accrualCol, a.HomePurchasesVat);
-                AddDecimal(ws, startRow + 6, accrualCol, a.ExportSalesVat);
-                AddDecimal(ws, startRow + 7, accrualCol, a.ExportPurchasesVat);
-                AddDecimal(ws, startRow + 9, accrualCol, a.VatDue);
-
-                accrualCol++;
+                AddDecimal(ws, startRow + 0, targetCol, a.VatDueSales);
+                AddDecimal(ws, startRow + 1, targetCol, a.VatDueAcquisitions);
+                AddDecimal(ws, startRow + 2, targetCol, a.TotalVatDue);
+                AddDecimal(ws, startRow + 3, targetCol, a.VatReclaimedCurrPeriod);
+                AddDecimal(ws, startRow + 4, targetCol, a.NetVatDue);
+                AddDecimal(ws, startRow + 5, targetCol, a.TotalValueSalesExVAT);
+                AddDecimal(ws, startRow + 6, targetCol, a.TotalValuePurchasesExVAT);
+                AddDecimal(ws, startRow + 7, targetCol, a.TotalValueGoodsSuppliedExVAT);
+                AddDecimal(ws, startRow + 8, targetCol, a.TotalValueGoodsReceivedExVAT);
             }
         }
     }
@@ -799,19 +792,19 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         int startRow = curRow + 1;
         var labelsMonthly = new[]
         {
-            Properties.Resources.TextVatHomeSales,
-            Properties.Resources.TextVatHomePurchases,
-            Properties.Resources.TextVatExportSales,
-            Properties.Resources.TextVatExportPurchases,
-            Properties.Resources.TextVatHomeSalesVat,
-            Properties.Resources.TextVatHomePurchasesVat,
-            Properties.Resources.TextVatExportSalesVat,
-            Properties.Resources.TextVatExportPurchasesVat,
-            Properties.Resources.TextVatDue
+            "VAT DUE SALES",
+            "VAT DUE ACQUISITIONS",
+            "TOTAL VAT DUE",
+            "VAT RECLAIMED CURRENT PERIOD",
+            "NET VAT DUE",
+            "TOTAL VALUE SALES EX VAT",
+            "TOTAL VALUE PURCHASES EX VAT",
+            "TOTAL VALUE GOODS SUPPLIED EX VAT",
+            "TOTAL VALUE GOODS RECEIVED EX VAT"
         };
 
         for (int i = 0; i < labelsMonthly.Length; i++)
-            ws.Cell(startRow + i, 1).Value = labelsMonthly[i].ToUpperInvariant();
+            ws.Cell(startRow + i, 1).Value = labelsMonthly[i];
         ws.Row(startRow + labelsMonthly.Length - 1).Style.Font.Bold = true;
         ws.Row(startRow + labelsMonthly.Length - 1).Style.Border.BottomBorder = XLBorderStyleValues.Thick;
         ws.Row(startRow).Style.Border.TopBorder = XLBorderStyleValues.Thin;
@@ -843,15 +836,15 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
 
             if (includeActivePeriods || p.StartOn <= DateTime.UtcNow)
             {
-                ws.Cell(startRow + 0, curCol).Value = p.HomeSales;
-                ws.Cell(startRow + 1, curCol).Value = p.HomePurchases;
-                ws.Cell(startRow + 2, curCol).Value = p.ExportSales;
-                ws.Cell(startRow + 3, curCol).Value = p.ExportPurchases;
-                ws.Cell(startRow + 4, curCol).Value = p.HomeSalesVat;
-                ws.Cell(startRow + 5, curCol).Value = p.HomePurchasesVat;
-                ws.Cell(startRow + 6, curCol).Value = p.ExportSalesVat;
-                ws.Cell(startRow + 7, curCol).Value = p.ExportPurchasesVat;
-                ws.Cell(startRow + 8, curCol).Value = p.VatDue;
+                ws.Cell(startRow + 0, curCol).Value = p.VatDueSales;
+                ws.Cell(startRow + 1, curCol).Value = p.VatDueAcquisitions;
+                ws.Cell(startRow + 2, curCol).Value = p.TotalVatDue;
+                ws.Cell(startRow + 3, curCol).Value = p.VatReclaimedCurrPeriod;
+                ws.Cell(startRow + 4, curCol).Value = p.NetVatDue;
+                ws.Cell(startRow + 5, curCol).Value = p.TotalValueSalesExVAT;
+                ws.Cell(startRow + 6, curCol).Value = p.TotalValuePurchasesExVAT;
+                ws.Cell(startRow + 7, curCol).Value = p.TotalValueGoodsSuppliedExVAT;
+                ws.Cell(startRow + 8, curCol).Value = p.TotalValueGoodsReceivedExVAT;
             }
             else
             {
@@ -868,26 +861,21 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
         if (includeTaxAccruals)
         {
             var accruals = await _repo.GetVatPeriodAccrualsAsync(connectionString, commandTimeoutSeconds, ct);
-            short accrualYear = 0;
-            int accrualCol = firstCol;
             foreach (var a in accruals)
             {
-                if (accrualYear == 0)
-                    accrualYear = a.YearNumber;
+                int targetCol = FindVatColumnForStartOn(monthlyTotals, a.StartOn, firstCol);
+                if (targetCol < firstCol)
+                    continue;
 
-                if (accrualYear != a.YearNumber)
-                {
-                    accrualYear = a.YearNumber;
-                    accrualCol++;
-                }
-
-                AddDecimal(ws, startRow + 4, accrualCol, a.HomeSalesVat);
-                AddDecimal(ws, startRow + 5, accrualCol, a.HomePurchasesVat);
-                AddDecimal(ws, startRow + 6, accrualCol, a.ExportSalesVat);
-                AddDecimal(ws, startRow + 7, accrualCol, a.ExportPurchasesVat);
-                AddDecimal(ws, startRow + 8, accrualCol, a.VatDue);
-
-                accrualCol++;
+                AddDecimal(ws, startRow + 0, targetCol, a.VatDueSales);
+                AddDecimal(ws, startRow + 1, targetCol, a.VatDueAcquisitions);
+                AddDecimal(ws, startRow + 2, targetCol, a.TotalVatDue);
+                AddDecimal(ws, startRow + 3, targetCol, a.VatReclaimedCurrPeriod);
+                AddDecimal(ws, startRow + 4, targetCol, a.NetVatDue);
+                AddDecimal(ws, startRow + 5, targetCol, a.TotalValueSalesExVAT);
+                AddDecimal(ws, startRow + 6, targetCol, a.TotalValuePurchasesExVAT);
+                AddDecimal(ws, startRow + 7, targetCol, a.TotalValueGoodsSuppliedExVAT);
+                AddDecimal(ws, startRow + 8, targetCol, a.TotalValueGoodsReceivedExVAT);
             }
         }
     }
@@ -1106,6 +1094,21 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             if (string.Equals(val, categoryCode, StringComparison.OrdinalIgnoreCase))
                 return cell.Address.RowNumber;
         }
+        return -1;
+    }
+
+    /// <summary>
+    /// Finds the worksheet column for a VAT period based on its StartOn value.
+    /// </summary>
+    private static int FindVatColumnForStartOn<T>(IReadOnlyList<T> periods, DateTime startOn, int firstCol) where T : class
+    {
+        for (int i = 0; i < periods.Count; i++)
+        {
+            var prop = typeof(T).GetProperty(nameof(VatPeriodTotalDto.StartOn));
+            if (prop?.GetValue(periods[i]) is DateTime dt && dt == startOn)
+                return firstCol + i;
+        }
+
         return -1;
     }
 

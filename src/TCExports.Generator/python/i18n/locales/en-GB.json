@@ -12,16 +12,15 @@
   "TextVatDueTitle": "VAT",
   "TextAnalysis": "ANALYSIS",
 
-  "TextVatHomeSales": "Home Sales",
-  "TextVatHomePurchases": "Home Purchases",
-  "TextVatExportSales": "Export Sales",
-  "TextVatExportPurchases": "Export Purchases",
-  "TextVatHomeSalesVat": "Home Sales VAT",
-  "TextVatHomePurchasesVat": "Home Purchases VAT",
-  "TextVatExportSalesVat": "Export Sales VAT",
-  "TextVatExportPurchasesVat": "Export Purchases VAT",
-  "TextVatAdjustment": "VAT Adjustment",
-  "TextVatDue": "VAT Due",
+  "TextVatDueSales": "VAT Due Sales",
+  "TextVatDueAcquisitions": "VAT Due Acquisitions",
+  "TextTotalVatDue": "Total VAT Due",
+  "TextVatReclaimedCurrPeriod": "VAT Reclaimed Current Period",
+  "TextNetVatDue": "Net VAT Due",
+  "TextTotalValueSalesExVAT": "Total Value Sales Ex VAT",
+  "TextTotalValuePurchasesExVAT": "Total Value Purchases Ex VAT",
+  "TextTotalValueGoodsSuppliedExVAT": "Total Value Goods Supplied Ex VAT",
+  "TextTotalValueGoodsReceivedExVAT": "Total Value Goods Received Ex VAT",
 
   "TextCapital": "Capital"
 }

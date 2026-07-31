@@ -267,8 +267,10 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
     public async Task<IReadOnlyList<VatRecurrenceDto>> GetVatRecurrenceAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT YearNumber, StartOn, HomeSales, HomePurchases, ExportSales, ExportPurchases,
-                   HomeSalesVat, HomePurchasesVat, ExportSalesVat, ExportPurchasesVat, VatAdjustment, VatDue
+            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
+                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
+                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
+                   totalValueGoodsReceivedExVAT
             FROM Cash.vwFlowVatRecurrence
             ORDER BY YearNumber, StartOn;";
         var list = new List<VatRecurrenceDto>();
@@ -283,16 +285,15 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
             {
                 YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
                 StartOn = rdr.GetDateTime(rdr.GetOrdinal("StartOn")),
-                HomeSales = rdr.GetDecimal(rdr.GetOrdinal("HomeSales")),
-                HomePurchases = rdr.GetDecimal(rdr.GetOrdinal("HomePurchases")),
-                ExportSales = rdr.GetDecimal(rdr.GetOrdinal("ExportSales")),
-                ExportPurchases = rdr.GetDecimal(rdr.GetOrdinal("ExportPurchases")),
-                HomeSalesVat = rdr.GetDecimal(rdr.GetOrdinal("HomeSalesVat")),
-                HomePurchasesVat = rdr.GetDecimal(rdr.GetOrdinal("HomePurchasesVat")),
-                ExportSalesVat = rdr.GetDecimal(rdr.GetOrdinal("ExportSalesVat")),
-                ExportPurchasesVat = rdr.GetDecimal(rdr.GetOrdinal("ExportPurchasesVat")),
-                VatAdjustment = rdr.GetDecimal(rdr.GetOrdinal("VatAdjustment")),
-                VatDue = rdr.GetDecimal(rdr.GetOrdinal("VatDue"))
+                VatDueSales = rdr.GetDecimal(rdr.GetOrdinal("vatDueSales")),
+                VatDueAcquisitions = rdr.GetDecimal(rdr.GetOrdinal("vatDueAcquisitions")),
+                TotalVatDue = rdr.GetDecimal(rdr.GetOrdinal("totalVatDue")),
+                VatReclaimedCurrPeriod = rdr.GetDecimal(rdr.GetOrdinal("vatReclaimedCurrPeriod")),
+                NetVatDue = rdr.GetDecimal(rdr.GetOrdinal("netVatDue")),
+                TotalValueSalesExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueSalesExVAT")),
+                TotalValuePurchasesExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValuePurchasesExVAT")),
+                TotalValueGoodsSuppliedExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")),
+                TotalValueGoodsReceivedExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsReceivedExVAT"))
             });
         }
         return list;
@@ -301,9 +302,12 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
     public async Task<IReadOnlyList<VatRecurrenceAccrualDto>> GetVatRecurrenceAccrualsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT YearNumber, HomeSalesVat, HomePurchasesVat, ExportSalesVat, ExportPurchasesVat, VatDue
+            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
+                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
+                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
+                   totalValueGoodsReceivedExVAT
             FROM Cash.vwFlowVatRecurrenceAccruals
-            ORDER BY YearNumber;";
+            ORDER BY YearNumber, StartOn;";
         var list = new List<VatRecurrenceAccrualDto>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
         await using var conn = new SqlConnection(ado);
@@ -315,11 +319,16 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
             list.Add(new VatRecurrenceAccrualDto
             {
                 YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
-                HomeSalesVat = rdr.IsDBNull(rdr.GetOrdinal("HomeSalesVat")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("HomeSalesVat")),
-                HomePurchasesVat = rdr.IsDBNull(rdr.GetOrdinal("HomePurchasesVat")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("HomePurchasesVat")),
-                ExportSalesVat = rdr.IsDBNull(rdr.GetOrdinal("ExportSalesVat")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("ExportSalesVat")),
-                ExportPurchasesVat = rdr.IsDBNull(rdr.GetOrdinal("ExportPurchasesVat")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("ExportPurchasesVat")),
-                VatDue = rdr.IsDBNull(rdr.GetOrdinal("VatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("VatDue"))
+                StartOn = rdr.GetDateTime(rdr.GetOrdinal("StartOn")),
+                VatDueSales = rdr.IsDBNull(rdr.GetOrdinal("vatDueSales")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatDueSales")),
+                VatDueAcquisitions = rdr.IsDBNull(rdr.GetOrdinal("vatDueAcquisitions")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatDueAcquisitions")),
+                TotalVatDue = rdr.IsDBNull(rdr.GetOrdinal("totalVatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalVatDue")),
+                VatReclaimedCurrPeriod = rdr.IsDBNull(rdr.GetOrdinal("vatReclaimedCurrPeriod")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatReclaimedCurrPeriod")),
+                NetVatDue = rdr.IsDBNull(rdr.GetOrdinal("netVatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("netVatDue")),
+                TotalValueSalesExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueSalesExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueSalesExVAT")),
+                TotalValuePurchasesExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValuePurchasesExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValuePurchasesExVAT")),
+                TotalValueGoodsSuppliedExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")),
+                TotalValueGoodsReceivedExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueGoodsReceivedExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsReceivedExVAT"))
             });
         }
         return list;
@@ -328,8 +337,10 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
     public async Task<IReadOnlyList<VatPeriodTotalDto>> GetVatPeriodTotalsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT YearNumber, StartOn, HomeSales, HomePurchases, ExportSales, ExportPurchases,
-                   HomeSalesVat, HomePurchasesVat, ExportSalesVat, ExportPurchasesVat, VatDue
+            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
+                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
+                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
+                   totalValueGoodsReceivedExVAT
             FROM Cash.vwFlowVatPeriodTotals
             ORDER BY YearNumber, StartOn;";
         var list = new List<VatPeriodTotalDto>();
@@ -344,15 +355,15 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
             {
                 YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
                 StartOn = rdr.GetDateTime(rdr.GetOrdinal("StartOn")),
-                HomeSales = rdr.GetDecimal(rdr.GetOrdinal("HomeSales")),
-                HomePurchases = rdr.GetDecimal(rdr.GetOrdinal("HomePurchases")),
-                ExportSales = rdr.GetDecimal(rdr.GetOrdinal("ExportSales")),
-                ExportPurchases = rdr.GetDecimal(rdr.GetOrdinal("ExportPurchases")),
-                HomeSalesVat = rdr.GetDecimal(rdr.GetOrdinal("HomeSalesVat")),
-                HomePurchasesVat = rdr.GetDecimal(rdr.GetOrdinal("HomePurchasesVat")),
-                ExportSalesVat = rdr.GetDecimal(rdr.GetOrdinal("ExportSalesVat")),
-                ExportPurchasesVat = rdr.GetDecimal(rdr.GetOrdinal("ExportPurchasesVat")),
-                VatDue = rdr.GetDecimal(rdr.GetOrdinal("VatDue"))
+                VatDueSales = rdr.GetDecimal(rdr.GetOrdinal("vatDueSales")),
+                VatDueAcquisitions = rdr.GetDecimal(rdr.GetOrdinal("vatDueAcquisitions")),
+                TotalVatDue = rdr.GetDecimal(rdr.GetOrdinal("totalVatDue")),
+                VatReclaimedCurrPeriod = rdr.GetDecimal(rdr.GetOrdinal("vatReclaimedCurrPeriod")),
+                NetVatDue = rdr.GetDecimal(rdr.GetOrdinal("netVatDue")),
+                TotalValueSalesExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueSalesExVAT")),
+                TotalValuePurchasesExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValuePurchasesExVAT")),
+                TotalValueGoodsSuppliedExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")),
+                TotalValueGoodsReceivedExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsReceivedExVAT"))
             });
         }
         return list;
@@ -361,9 +372,12 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
     public async Task<IReadOnlyList<VatPeriodAccrualDto>> GetVatPeriodAccrualsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT YearNumber, HomeSalesVat, HomePurchasesVat, ExportSalesVat, ExportPurchasesVat, VatDue
+            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
+                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
+                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
+                   totalValueGoodsReceivedExVAT
             FROM Cash.vwFlowVatPeriodAccruals
-            ORDER BY YearNumber;";
+            ORDER BY YearNumber, StartOn;";
         var list = new List<VatPeriodAccrualDto>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
         await using var conn = new SqlConnection(ado);
@@ -375,11 +389,16 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
             list.Add(new VatPeriodAccrualDto
             {
                 YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
-                HomeSalesVat = rdr.IsDBNull(rdr.GetOrdinal("HomeSalesVat")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("HomeSalesVat")),
-                HomePurchasesVat = rdr.IsDBNull(rdr.GetOrdinal("HomePurchasesVat")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("HomePurchasesVat")),
-                ExportSalesVat = rdr.IsDBNull(rdr.GetOrdinal("ExportSalesVat")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("ExportSalesVat")),
-                ExportPurchasesVat = rdr.IsDBNull(rdr.GetOrdinal("ExportPurchasesVat")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("ExportPurchasesVat")),
-                VatDue = rdr.IsDBNull(rdr.GetOrdinal("VatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("VatDue"))
+                StartOn = rdr.GetDateTime(rdr.GetOrdinal("StartOn")),
+                VatDueSales = rdr.IsDBNull(rdr.GetOrdinal("vatDueSales")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatDueSales")),
+                VatDueAcquisitions = rdr.IsDBNull(rdr.GetOrdinal("vatDueAcquisitions")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatDueAcquisitions")),
+                TotalVatDue = rdr.IsDBNull(rdr.GetOrdinal("totalVatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalVatDue")),
+                VatReclaimedCurrPeriod = rdr.IsDBNull(rdr.GetOrdinal("vatReclaimedCurrPeriod")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatReclaimedCurrPeriod")),
+                NetVatDue = rdr.IsDBNull(rdr.GetOrdinal("netVatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("netVatDue")),
+                TotalValueSalesExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueSalesExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueSalesExVAT")),
+                TotalValuePurchasesExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValuePurchasesExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValuePurchasesExVAT")),
+                TotalValueGoodsSuppliedExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")),
+                TotalValueGoodsReceivedExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueGoodsReceivedExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsReceivedExVAT"))
             });
         }
         return list;

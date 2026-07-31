@@ -78,3 +78,7 @@ coverage/
 *.db
 *.sqlite
 tests/*
+
+# --- Trade Control
+docs/tmp
+.aider*

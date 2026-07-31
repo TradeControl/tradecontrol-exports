@@ -105,16 +105,56 @@ class SqlServerRepository:
         return row["VatType"] if row else ""
 
     def get_vat_recurrence(self) -> List[Dict[str, Any]]:
-        return _query_all(self.conn_str, "SELECT YearNumber, StartOn, HomeSales, HomePurchases, ExportSales, ExportPurchases, HomeSalesVat, HomePurchasesVat, ExportSalesVat, ExportPurchasesVat, VatAdjustment, VatDue FROM Cash.vwFlowVatRecurrence ORDER BY YearNumber, StartOn")
+        return _query_all(
+            self.conn_str,
+            """
+            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
+                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
+                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
+                   totalValueGoodsReceivedExVAT
+            FROM Cash.vwFlowVatRecurrence
+            ORDER BY YearNumber, StartOn
+            """
+        )
 
     def get_vat_recurrence_accruals(self) -> List[Dict[str, Any]]:
-        return _query_all(self.conn_str, "SELECT YearNumber, HomeSalesVat, HomePurchasesVat, ExportSalesVat, ExportPurchasesVat, VatDue FROM Cash.vwFlowVatRecurrenceAccruals ORDER BY YearNumber")
+        return _query_all(
+            self.conn_str,
+            """
+            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
+                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
+                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
+                   totalValueGoodsReceivedExVAT
+            FROM Cash.vwFlowVatRecurrenceAccruals
+            ORDER BY YearNumber, StartOn
+            """
+        )
 
     def get_vat_period_totals(self) -> List[Dict[str, Any]]:
-        return _query_all(self.conn_str, "SELECT YearNumber, StartOn, HomeSales, HomePurchases, ExportSales, ExportPurchases, HomeSalesVat, HomePurchasesVat, ExportSalesVat, ExportPurchasesVat, VatDue FROM Cash.vwFlowVatPeriodTotals ORDER BY YearNumber, StartOn")
+        return _query_all(
+            self.conn_str,
+            """
+            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
+                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
+                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
+                   totalValueGoodsReceivedExVAT
+            FROM Cash.vwFlowVatPeriodTotals
+            ORDER BY YearNumber, StartOn
+            """
+        )
 
     def get_vat_period_accruals(self) -> List[Dict[str, Any]]:
-        return _query_all(self.conn_str, "SELECT YearNumber, HomeSalesVat, HomePurchasesVat, ExportSalesVat, ExportPurchasesVat, VatDue FROM Cash.vwFlowVatPeriodAccruals ORDER BY YearNumber")
+        return _query_all(
+            self.conn_str,
+            """
+            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
+                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
+                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
+                   totalValueGoodsReceivedExVAT
+            FROM Cash.vwFlowVatPeriodAccruals
+            ORDER BY YearNumber, StartOn
+            """
+        )
 
     # Bank
     def get_bank_accounts(self) -> List[Dict[str, Any]]:
