@@ -685,11 +685,11 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             "VAT DUE ACQUISITIONS",
             "TOTAL VAT DUE",
             "VAT RECLAIMED CURRENT PERIOD",
-            "NET VAT DUE",
             "TOTAL VALUE SALES EX VAT",
             "TOTAL VALUE PURCHASES EX VAT",
             "TOTAL VALUE GOODS SUPPLIED EX VAT",
-            "TOTAL VALUE GOODS RECEIVED EX VAT"
+            "TOTAL VALUE GOODS RECEIVED EX VAT",
+            "NET VAT DUE",
         };
         for (int i = 0; i < labels.Length; i++)
             ws.Cell(startRow + i, 1).Value = labels[i];
@@ -728,11 +728,11 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
                 ws.Cell(startRow + 1, curCol).Value = p.VatDueAcquisitions;
                 ws.Cell(startRow + 2, curCol).Value = p.TotalVatDue;
                 ws.Cell(startRow + 3, curCol).Value = p.VatReclaimedCurrPeriod;
-                ws.Cell(startRow + 4, curCol).Value = p.NetVatDue;
-                ws.Cell(startRow + 5, curCol).Value = p.TotalValueSalesExVAT;
-                ws.Cell(startRow + 6, curCol).Value = p.TotalValuePurchasesExVAT;
-                ws.Cell(startRow + 7, curCol).Value = p.TotalValueGoodsSuppliedExVAT;
-                ws.Cell(startRow + 8, curCol).Value = p.TotalValueGoodsReceivedExVAT;
+                ws.Cell(startRow + 4, curCol).Value = p.TotalValueSalesExVAT;
+                ws.Cell(startRow + 5, curCol).Value = p.TotalValuePurchasesExVAT;
+                ws.Cell(startRow + 6, curCol).Value = p.TotalValueGoodsSuppliedExVAT;
+                ws.Cell(startRow + 7, curCol).Value = p.TotalValueGoodsReceivedExVAT;
+                ws.Cell(startRow + 8, curCol).Value = p.NetVatDue;
             }
             else
             {
@@ -758,11 +758,11 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
                 AddDecimal(ws, startRow + 1, targetCol, a.VatDueAcquisitions);
                 AddDecimal(ws, startRow + 2, targetCol, a.TotalVatDue);
                 AddDecimal(ws, startRow + 3, targetCol, a.VatReclaimedCurrPeriod);
-                AddDecimal(ws, startRow + 4, targetCol, a.NetVatDue);
-                AddDecimal(ws, startRow + 5, targetCol, a.TotalValueSalesExVAT);
-                AddDecimal(ws, startRow + 6, targetCol, a.TotalValuePurchasesExVAT);
-                AddDecimal(ws, startRow + 7, targetCol, a.TotalValueGoodsSuppliedExVAT);
-                AddDecimal(ws, startRow + 8, targetCol, a.TotalValueGoodsReceivedExVAT);
+                AddDecimal(ws, startRow + 4, targetCol, a.TotalValueSalesExVAT);
+                AddDecimal(ws, startRow + 5, targetCol, a.TotalValuePurchasesExVAT);
+                AddDecimal(ws, startRow + 6, targetCol, a.TotalValueGoodsSuppliedExVAT);
+                AddDecimal(ws, startRow + 7, targetCol, a.TotalValueGoodsReceivedExVAT);
+                AddDecimal(ws, startRow + 8, targetCol, a.NetVatDue);
             }
         }
     }
@@ -796,11 +796,11 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             "VAT DUE ACQUISITIONS",
             "TOTAL VAT DUE",
             "VAT RECLAIMED CURRENT PERIOD",
-            "NET VAT DUE",
             "TOTAL VALUE SALES EX VAT",
             "TOTAL VALUE PURCHASES EX VAT",
             "TOTAL VALUE GOODS SUPPLIED EX VAT",
-            "TOTAL VALUE GOODS RECEIVED EX VAT"
+            "TOTAL VALUE GOODS RECEIVED EX VAT",
+            "NET VAT DUE"
         };
 
         for (int i = 0; i < labelsMonthly.Length; i++)
@@ -840,11 +840,11 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
                 ws.Cell(startRow + 1, curCol).Value = p.VatDueAcquisitions;
                 ws.Cell(startRow + 2, curCol).Value = p.TotalVatDue;
                 ws.Cell(startRow + 3, curCol).Value = p.VatReclaimedCurrPeriod;
-                ws.Cell(startRow + 4, curCol).Value = p.NetVatDue;
-                ws.Cell(startRow + 5, curCol).Value = p.TotalValueSalesExVAT;
-                ws.Cell(startRow + 6, curCol).Value = p.TotalValuePurchasesExVAT;
-                ws.Cell(startRow + 7, curCol).Value = p.TotalValueGoodsSuppliedExVAT;
-                ws.Cell(startRow + 8, curCol).Value = p.TotalValueGoodsReceivedExVAT;
+                ws.Cell(startRow + 4, curCol).Value = p.TotalValueSalesExVAT;
+                ws.Cell(startRow + 5, curCol).Value = p.TotalValuePurchasesExVAT;
+                ws.Cell(startRow + 6, curCol).Value = p.TotalValueGoodsSuppliedExVAT;
+                ws.Cell(startRow + 7, curCol).Value = p.TotalValueGoodsReceivedExVAT;
+                ws.Cell(startRow + 8, curCol).Value = p.NetVatDue;
             }
             else
             {
@@ -871,11 +871,11 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
                 AddDecimal(ws, startRow + 1, targetCol, a.VatDueAcquisitions);
                 AddDecimal(ws, startRow + 2, targetCol, a.TotalVatDue);
                 AddDecimal(ws, startRow + 3, targetCol, a.VatReclaimedCurrPeriod);
-                AddDecimal(ws, startRow + 4, targetCol, a.NetVatDue);
-                AddDecimal(ws, startRow + 5, targetCol, a.TotalValueSalesExVAT);
-                AddDecimal(ws, startRow + 6, targetCol, a.TotalValuePurchasesExVAT);
-                AddDecimal(ws, startRow + 7, targetCol, a.TotalValueGoodsSuppliedExVAT);
-                AddDecimal(ws, startRow + 8, targetCol, a.TotalValueGoodsReceivedExVAT);
+                AddDecimal(ws, startRow + 4, targetCol, a.TotalValueSalesExVAT);
+                AddDecimal(ws, startRow + 5, targetCol, a.TotalValuePurchasesExVAT);
+                AddDecimal(ws, startRow + 6, targetCol, a.TotalValueGoodsSuppliedExVAT);
+                AddDecimal(ws, startRow + 7, targetCol, a.TotalValueGoodsReceivedExVAT);
+                AddDecimal(ws, startRow + 8, targetCol, a.NetVatDue);
             }
         }
     }
