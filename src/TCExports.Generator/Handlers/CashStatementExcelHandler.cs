@@ -320,13 +320,20 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             for (int i = 0; i < totalCols; i++)
             {
                 int col = firstCol + i;
-                var sum = $"=SUM({GetColLetter(col)}{startRow + 1}:{GetColLetter(col)}{curRow - 1})";
-                if (category.CashPolarityCode == 0) sum += "*-1";
-                ws.Cell(curRow, col).FormulaA1 = sum;
+                if (cashCodes.Count == 0)
+                {
+                    ws.Cell(curRow, col).Value = 0m;
+                }
+                else
+                {
+                    var sum = $"=SUM({GetColLetter(col)}{startRow + 1}:{GetColLetter(col)}{curRow - 1})";
+                    if (category.CashPolarityCode == 0) sum += "*-1";
+                    ws.Cell(curRow, col).FormulaA1 = sum;
+                }
             }
 
             // Category code marker in column C (for lookup).
-            ws.Cell(curRow, 3).FormulaA1 = $"=\"{category.CategoryCode}\"";
+            ws.Cell(curRow, 3).Value = category.CategoryCode;
         }
 
         return categories;
@@ -354,7 +361,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             ws.Row(curRow).Style.Protection.Locked = true;
             ws.Cell(curRow, 1).FormulaA1 = $"=\"{total.CategoryCode}\"";
             ws.Cell(curRow, 2).Value = total.Category;
-            ws.Cell(curRow, 3).FormulaA1 = $"=\"{total.CategoryCode}\"";
+            ws.Cell(curRow, 3).Value = total.CategoryCode;
         }
 
         ws.Row(curRow).Style.Border.BottomBorder = XLBorderStyleValues.Thick;
@@ -489,7 +496,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             string exprCategoryCode = await _repo.GetCategoryCodeFromNameAsync(connectionString, expr.Category ?? string.Empty, commandTimeoutSeconds, ct);
             if (!string.IsNullOrWhiteSpace(exprCategoryCode))
             {
-                ws.Cell(curRow, 3).FormulaA1 = $"=\"{exprCategoryCode}\"";
+                ws.Cell(curRow, 3).Value = exprCategoryCode;
                 ws.Cell(curRow, 3).Style.Font.FontColor = XLColor.LimeGreen;
             }
 
@@ -1090,7 +1097,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
     {
         foreach (var cell in ws.Column(3).CellsUsed())
         {
-            var val = cell.HasFormula ? cell.Value.ToString() : cell.GetString();
+            var val = cell.GetString();
             if (string.Equals(val, categoryCode, StringComparison.OrdinalIgnoreCase))
                 return cell.Address.RowNumber;
         }
@@ -1102,11 +1109,26 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
     /// </summary>
     private static int FindVatColumnForStartOn<T>(IReadOnlyList<T> periods, DateTime startOn, int firstCol) where T : class
     {
+        short? currentYear = null;
+        int col = firstCol;
+
         for (int i = 0; i < periods.Count; i++)
         {
-            var prop = typeof(T).GetProperty(nameof(VatPeriodTotalDto.StartOn));
-            if (prop?.GetValue(periods[i]) is DateTime dt && dt == startOn)
-                return firstCol + i;
+            var yearProperty = typeof(T).GetProperty(nameof(VatPeriodTotalDto.YearNumber));
+            var startProperty = typeof(T).GetProperty(nameof(VatPeriodTotalDto.StartOn));
+            if (yearProperty?.GetValue(periods[i]) is not short year ||
+                startProperty?.GetValue(periods[i]) is not DateTime periodStart)
+                return -1;
+
+            // Each rendered year is followed by an annual-total column.
+            if (currentYear.HasValue && currentYear.Value != year)
+                col++;
+
+            currentYear = year;
+            if (periodStart == startOn)
+                return col;
+
+            col++;
         }
 
         return -1;
