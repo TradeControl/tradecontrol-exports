@@ -582,6 +582,7 @@ def render_expressions(sb: SheetBuilder,
         # Map names -> codes
         totals_by_name_local = totals_by_name
         name_to_code: dict[str, str] = {}
+        reference_errors: list[str] = []
         for name in tokens:
             code = ""
             if hasattr(repo, "get_category_code_from_name"):
@@ -589,25 +590,33 @@ def render_expressions(sb: SheetBuilder,
             if not code:
                 code = totals_by_name_local.get(name, "")
             if not code:
-                code = name
-            name_to_code[name] = code
+                reference_errors.append(f"Reference not found or ambiguous: [{name}]")
+            else:
+                name_to_code[name] = code
 
         # Replace [Name] -> [Code] and normalize for Calc
         normalized = template
-        for name in tokens:
-            normalized = normalized.replace(f"[{name}]", f"[{name_to_code[name]}]")
+        for name, code in name_to_code.items():
+            normalized = normalized.replace(f"[{name}]", f"[{code}]")
         normalized = normalize_for_calc(normalized)
+
+        row_by_code: dict[str, int] = {}
+        for code in set(name_to_code.values()):
+            row_index = (totals_row_by_category or {}).get(code, -1)
+            if row_index <= 0:
+                reference_errors.append(f"Reference row not found: [{code}]")
+            else:
+                row_by_code[code] = row_index
 
         # Write per-column formulas with style override (Pct0 -> PCT0_CELL, Num2 -> NUM2_CELL, etc.)
         for col in range(first_col, last_col + 1):
+            if reference_errors:
+                add_text_cell(r, "", style=override_style)
+                continue
             col_letter = _col_letter(col)
             formula = normalized
-            for code in {c for c in name_to_code.values()}:
-                row_index = (totals_row_by_category or {}).get(code, -1)
-                if row_index <= 0:
-                    formula = formula.replace(f"[{code}]", "0")
-                else:
-                    formula = formula.replace(f"[{code}]", f"{col_letter}{row_index}")
+            for code, row_index in row_by_code.items():
+                formula = formula.replace(f"[{code}]", f"{col_letter}{row_index}")
             add_number_cell(r, formula=formula, style=override_style)
 
         sb.append_row(r)

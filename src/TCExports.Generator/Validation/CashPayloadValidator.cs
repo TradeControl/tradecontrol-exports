@@ -7,7 +7,6 @@ public sealed class CashPayloadValidator : IPayloadValidator
     private const string IncludeActivePeriods = "includeActivePeriods";
     private const string IncludeOrderBook = "includeOrderBook";
     private const string IncludeBankBalances = "includeBankBalances";
-    private const string IncludeBankTypes = "includeBankTypes";
     private const string IncludeTaxAccruals = "includeTaxAccruals";
     private const string IncludeVatDetails = "includeVatDetails";
     private const string IncludeBalanceSheet = "includeBalanceSheet";
@@ -41,7 +40,6 @@ public sealed class CashPayloadValidator : IPayloadValidator
         NormalizeBool(p, IncludeActivePeriods, false);
         NormalizeBool(p, IncludeOrderBook, false);
         NormalizeBool(p, IncludeBankBalances, true);
-        NormalizeBool(p, IncludeBankTypes, false);
         NormalizeBool(p, IncludeTaxAccruals, true);
         NormalizeBool(p, IncludeVatDetails, true);
         NormalizeBool(p, IncludeBalanceSheet, true);

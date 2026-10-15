@@ -141,6 +141,9 @@
   <data name="TextBalanceSheet" xml:space="preserve">
     <value>BALANCE SHEET</value>
   </data>
+  <data name="TextCashFlow" xml:space="preserve">
+    <value>CASH FLOW</value>
+  </data>
   <data name="TextCapital" xml:space="preserve">
     <value>CAPITAL</value>
   </data>
@@ -162,6 +165,21 @@
   <data name="TextPeriodTotal" xml:space="preserve">
     <value>PERIOD TOTAL</value>
   </data>
+  <data name="TextTradeCashFlow" xml:space="preserve">
+    <value>TRADE CASH FLOW</value>
+  </data>
+  <data name="TextMoneyCashFlow" xml:space="preserve">
+    <value>MONEY CASH FLOW</value>
+  </data>
+  <data name="TextTaxCashFlow" xml:space="preserve">
+    <value>TAX CASH FLOW</value>
+  </data>
+  <data name="TextTradeTotals" xml:space="preserve">
+    <value>TRADE TOTALS</value>
+  </data>
+  <data name="TextTaxTotals" xml:space="preserve">
+    <value>TAX TOTALS</value>
+  </data>
   <data name="TextStatementTitle" xml:space="preserve">
     <value>TRADE STATEMENT - {0} {1}</value>
   </data>
@@ -179,6 +197,33 @@
   </data>
   <data name="TextVatDueTitle" xml:space="preserve">
     <value>VAT</value>
+  </data>
+  <data name="TextVatDueSales" xml:space="preserve">
+    <value>VAT DUE SALES</value>
+  </data>
+  <data name="TextVatDueAcquisitions" xml:space="preserve">
+    <value>VAT DUE ACQUISITIONS</value>
+  </data>
+  <data name="TextTotalVatDue" xml:space="preserve">
+    <value>TOTAL VAT DUE</value>
+  </data>
+  <data name="TextVatReclaimedCurrPeriod" xml:space="preserve">
+    <value>VAT RECLAIMED CURRENT PERIOD</value>
+  </data>
+  <data name="TextNetVatDue" xml:space="preserve">
+    <value>NET VAT DUE</value>
+  </data>
+  <data name="TextTotalValueSalesExVAT" xml:space="preserve">
+    <value>TOTAL VALUE SALES EX VAT</value>
+  </data>
+  <data name="TextTotalValuePurchasesExVAT" xml:space="preserve">
+    <value>TOTAL VALUE PURCHASES EX VAT</value>
+  </data>
+  <data name="TextTotalValueGoodsSuppliedExVAT" xml:space="preserve">
+    <value>TOTAL VALUE GOODS SUPPLIED EX VAT</value>
+  </data>
+  <data name="TextTotalValueGoodsReceivedExVAT" xml:space="preserve">
+    <value>TOTAL VALUE GOODS RECEIVED EX VAT</value>
   </data>
   <data name="TextVatExportPurchases" xml:space="preserve">
     <value>Export Purchases</value>
@@ -212,5 +257,50 @@
   </data>
   <data name="TextReconDifference" xml:space="preserve">
     <value>DIFFERENCE</value>
+  </data>
+  <data name="TextReconciliation" xml:space="preserve">
+    <value>RECONCILIATION</value>
+  </data>
+  <data name="TextYear" xml:space="preserve">
+    <value>YEAR</value>
+  </data>
+  <data name="TextDescription" xml:space="preserve">
+    <value>DESCRIPTION</value>
+  </data>
+  <data name="TextOpeningCapital" xml:space="preserve">
+    <value>OPENING CAPITAL</value>
+  </data>
+  <data name="TextClosingCapital" xml:space="preserve">
+    <value>CLOSING CAPITAL</value>
+  </data>
+  <data name="TextProfit" xml:space="preserve">
+    <value>PROFIT</value>
+  </data>
+  <data name="TextBusinessTax" xml:space="preserve">
+    <value>BUSINESS TAX</value>
+  </data>
+  <data name="TextProfitAfterTax" xml:space="preserve">
+    <value>PROFIT AFTER TAX</value>
+  </data>
+  <data name="TextCapitalMovement" xml:space="preserve">
+    <value>CAPITAL MOVEMENT</value>
+  </data>
+  <data name="TextOpeningSubjectPosition" xml:space="preserve">
+    <value>OPENING SUBJECT POSITION</value>
+  </data>
+  <data name="TextOpeningAccountPosition" xml:space="preserve">
+    <value>OPENING ACCOUNT POSITION</value>
+  </data>
+  <data name="TextCapitalDelta" xml:space="preserve">
+    <value>CAPITAL DELTA</value>
+  </data>
+  <data name="TextBridgeTotal" xml:space="preserve">
+    <value>BRIDGE TOTAL</value>
+  </data>
+  <data name="TextStatus" xml:space="preserve">
+    <value>STATUS</value>
+  </data>
+  <data name="TextTolerance" xml:space="preserve">
+    <value>TOLERANCE</value>
   </data>
 </root>

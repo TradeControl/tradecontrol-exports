@@ -44,6 +44,7 @@ public sealed class CategoryTotalDto
 public sealed class CategoryExpressionDto
 {
     public short DisplayOrder { get; init; }
+    public string CategoryCode { get; init; } = "";
     public string Category { get; init; } = "";
     public string Expression { get; init; } = "";
     public string Format { get; init; } = "";

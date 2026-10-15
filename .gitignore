@@ -77,7 +77,7 @@ coverage/
 *.cov
 *.db
 *.sqlite
-tests/*
+# Test source is tracked. Build artefacts and generated spreadsheets remain ignored above.
 
 # --- Trade Control
 docs/tmp

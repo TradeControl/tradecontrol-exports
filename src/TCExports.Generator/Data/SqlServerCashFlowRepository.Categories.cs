@@ -125,7 +125,7 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
     public async Task<IReadOnlyList<CategoryExpressionDto>> GetCategoryExpressionsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         const string sql = @"
-            SELECT DisplayOrder, Category, Expression, 
+            SELECT DisplayOrder, CategoryCode, Category, Expression,
 	            CASE COALESCE(ce.Template, '') 
 		            WHEN '' THEN ce.Format
 		            ELSE ce.Template
@@ -144,6 +144,7 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
             list.Add(new CategoryExpressionDto
             {
                 DisplayOrder = rdr.GetInt16(rdr.GetOrdinal("DisplayOrder")),
+                CategoryCode = rdr.GetString(rdr.GetOrdinal("CategoryCode")),
                 Category = rdr.GetString(rdr.GetOrdinal("Category")),
                 Expression = rdr.GetString(rdr.GetOrdinal("Expression")),
                 Format = rdr.GetString(rdr.GetOrdinal("Format"))
@@ -154,17 +155,25 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
 
     public async Task<string> GetCategoryCodeFromNameAsync(string connectionString, string categoryName, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
-        // Matches DataContext.proc_FlowCategoryCodeFromName usage
-        const string procName = "Cash.proc_FlowCategoryCodeFromName";
+        const string sql = @"
+            SELECT CASE
+                WHEN EXISTS (SELECT 1 FROM Cash.tbCategory WHERE CategoryCode = @Token)
+                    THEN @Token
+                WHEN EXISTS (SELECT 1 FROM Cash.tbCode WHERE CashCode = @Token)
+                    THEN @Token
+                WHEN (SELECT COUNT(*) FROM Cash.tbCategory WHERE Category = @Token) = 1
+                    THEN (SELECT CategoryCode FROM Cash.tbCategory WHERE Category = @Token)
+                WHEN NOT EXISTS (SELECT 1 FROM Cash.tbCategory WHERE Category = @Token)
+                 AND (SELECT COUNT(*) FROM Cash.tbCode WHERE CashDescription = @Token) = 1
+                    THEN (SELECT CashCode FROM Cash.tbCode WHERE CashDescription = @Token)
+                ELSE N''
+            END;";
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
         await using var conn = new SqlConnection(ado);
         await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(procName, conn) { CommandType = CommandType.StoredProcedure, CommandTimeout = commandTimeoutSeconds };
-        cmd.Parameters.Add(new SqlParameter("@Category", SqlDbType.NVarChar, 50) { Value = categoryName });
-        var outParam = new SqlParameter("@CategoryCode", SqlDbType.NVarChar, 10) { Direction = ParameterDirection.Output };
-        cmd.Parameters.Add(outParam);
-        await cmd.ExecuteNonQueryAsync(ct);
-        return outParam.Value as string ?? string.Empty;
+        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
+        cmd.Parameters.Add(new SqlParameter("@Token", SqlDbType.NVarChar, 100) { Value = categoryName.Trim() });
+        return await cmd.ExecuteScalarAsync(ct) as string ?? string.Empty;
     }
 
     public async Task SetCategoryExpressionStatusAsync(
@@ -179,6 +188,20 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
         await using var conn = new SqlConnection(ado);
         await conn.OpenAsync(ct);
+
+        await using (var stateCommand = new SqlCommand(
+            "SELECT CONVERT(nvarchar(20), DATABASEPROPERTYEX(DB_NAME(), 'Updateability'));",
+            conn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = commandTimeoutSeconds
+        })
+        {
+            var updateability = await stateCommand.ExecuteScalarAsync(ct) as string;
+            if (string.Equals(updateability, "READ_ONLY", StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+
         await using var cmd = new SqlCommand(proc, conn)
         {
             CommandType = CommandType.StoredProcedure,

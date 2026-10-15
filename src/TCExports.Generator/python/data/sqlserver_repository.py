@@ -86,8 +86,21 @@ class SqlServerRepository:
         return _query_all(self.conn_str, "SELECT DisplayOrder, CategoryCode, Category, Expression, Format FROM Cash.vwCategoryExpressions WHERE SyntaxTypeCode IN (0,1) ORDER BY DisplayOrder, Category")
 
     def get_category_code_from_name(self, name: str) -> Optional[str]:
-        row = _query_one(self.conn_str, "SELECT CategoryCode FROM Cash.vwFlowCategories WHERE Category = ?", (name,))
-        return row["CategoryCode"] if row else None
+        row = _query_one(self.conn_str, """
+            SELECT CASE
+                WHEN EXISTS (SELECT 1 FROM Cash.tbCategory WHERE CategoryCode = ?)
+                    THEN ?
+                WHEN EXISTS (SELECT 1 FROM Cash.tbCode WHERE CashCode = ?)
+                    THEN ?
+                WHEN (SELECT COUNT(*) FROM Cash.tbCategory WHERE Category = ?) = 1
+                    THEN (SELECT CategoryCode FROM Cash.tbCategory WHERE Category = ?)
+                WHEN NOT EXISTS (SELECT 1 FROM Cash.tbCategory WHERE Category = ?)
+                 AND (SELECT COUNT(*) FROM Cash.tbCode WHERE CashDescription = ?) = 1
+                    THEN (SELECT CashCode FROM Cash.tbCode WHERE CashDescription = ?)
+                ELSE N''
+            END AS CategoryCode
+            """, (name, name, name, name, name, name, name, name, name))
+        return row["CategoryCode"] if row and row.get("CategoryCode") else None
 
     def set_category_expression_status(self, category_code: str, is_error: bool, message: Optional[str] = None) -> None:
         # Minimal implementation: write to App.proc_EventLog (Error=0, Information=2)

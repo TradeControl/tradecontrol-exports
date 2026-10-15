@@ -493,7 +493,9 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
 
             ws.Cell(curRow, 1).Value = expr.Category ?? string.Empty;
 
-            string exprCategoryCode = await _repo.GetCategoryCodeFromNameAsync(connectionString, expr.Category ?? string.Empty, commandTimeoutSeconds, ct);
+            string exprCategoryCode = expr.CategoryCode;
+            if (string.IsNullOrWhiteSpace(exprCategoryCode))
+                exprCategoryCode = await _repo.GetCategoryCodeFromNameAsync(connectionString, expr.Category ?? string.Empty, commandTimeoutSeconds, ct);
             if (!string.IsNullOrWhiteSpace(exprCategoryCode))
             {
                 ws.Cell(curRow, 3).Value = exprCategoryCode;
@@ -522,33 +524,45 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
                 i = rb + 1;
             }
 
+            var errors = new List<string>();
             var nameToCode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var name in tokens)
             {
                 var code = await _repo.GetCategoryCodeFromNameAsync(connectionString, name, commandTimeoutSeconds, ct);
-                if (string.IsNullOrWhiteSpace(code)) code = name;
-                nameToCode[name] = code;
+                if (string.IsNullOrWhiteSpace(code))
+                    errors.Add($"Reference not found or ambiguous: [{name}]");
+                else
+                    nameToCode[name] = code;
             }
 
             string normalizedTemplate = template;
             foreach (var kvp in nameToCode)
                 normalizedTemplate = normalizedTemplate.Replace($"[{kvp.Key}]", $"[{kvp.Value}]");
 
-            var errors = new List<string>();
+            var rowByCode = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var code in nameToCode.Values.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                int srcRow = FindCategoryTotalsRow(ws, code);
+                if (srcRow <= 0)
+                    errors.Add($"Reference row not found: [{code}]");
+                else
+                    rowByCode[code] = srcRow;
+            }
 
             for (int col = firstCol; col <= lastCol; col++)
             {
+                if (errors.Count > 0)
+                {
+                    ws.Cell(curRow, col).Value = string.Empty;
+                    ws.Cell(curRow, col).Style.Fill.BackgroundColor = XLColor.Red;
+                    continue;
+                }
+
                 string colLetter = GetColLetter(col);
                 string formula = normalizedTemplate;
 
-                foreach (var code in nameToCode.Values)
-                {
-                    int srcRow = FindCategoryTotalsRow(ws, code);
-                    if (srcRow <= 0)
-                        errors.Add($"Reference not found: [{code}]");
-                    var replacement = (srcRow > 0) ? $"{colLetter}{srcRow}" : "0";
-                    formula = formula.Replace($"[{code}]", replacement);
-                }
+                foreach (var reference in rowByCode)
+                    formula = formula.Replace($"[{reference.Key}]", $"{colLetter}{reference.Value}", StringComparison.OrdinalIgnoreCase);
 
                 try
                 {
@@ -1091,7 +1105,7 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
     }
 
     /// <summary>
-    /// Finds the row number of a category totals row by matching its category code marker in column C.
+    /// Finds a statement row by its stable category marker in column C or cash-code marker in column A.
     /// </summary>
     private static int FindCategoryTotalsRow(IXLWorksheet ws, string categoryCode)
     {
@@ -1101,6 +1115,14 @@ public sealed class CashStatementExcelHandler : IDocumentHandler
             if (string.Equals(val, categoryCode, StringComparison.OrdinalIgnoreCase))
                 return cell.Address.RowNumber;
         }
+
+        foreach (var cell in ws.Column(1).CellsUsed())
+        {
+            var val = cell.GetString();
+            if (string.Equals(val, categoryCode, StringComparison.OrdinalIgnoreCase))
+                return cell.Address.RowNumber;
+        }
+
         return -1;
     }
 
