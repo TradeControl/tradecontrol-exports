@@ -4,7 +4,7 @@
 **Contract version:** 1  
 **Date:** 15 October 2026
 
-Accepted by Ian Monnox on 15 October 2026. The contract remains amendable when implementation evidence identifies an omitted current behaviour; amendments are reviewed before dependent work continues.
+Accepted on 15 October 2026. The contract remains amendable when implementation evidence identifies an omitted current behaviour; amendments are reviewed before dependent work continues.
 
 ## 1. Decision
 

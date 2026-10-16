@@ -4,7 +4,7 @@
 **Reference:** accepted Phase 0 all-options XLSX baselines and Phase 1 comparator  
 **Date:** 15 October 2026
 
-Accepted by Ian Monnox on 15 October 2026. Newly discovered current-XLSX behaviour must be added here and reviewed before dependent implementation continues.
+Accepted on 15 October 2026. Newly discovered current-XLSX behaviour must be added here and reviewed before dependent implementation continues.
 
 This matrix makes every characterized current Excel element the responsibility of either the shared model or the XLSX renderer. `Mixed` means the model supplies semantic intent and authoritative content while the renderer supplies native spreadsheet representation.
 

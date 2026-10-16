@@ -1,7 +1,10 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using TCExports.Generator.CashStatement;
 using TCExports.Generator.Contracts;
 using TCExports.Generator.Data;
+using TCExports.Generator.Excel;
 using TCExports.Generator.Handlers;
+using TCExports.Generator.Ods;
 using TCExports.Generator.Validation;
 
 namespace TCExports.Generator;
@@ -32,13 +35,12 @@ public static class ExportRunner
             #endregion
 
             #region cash flow statements
-            // Routing handler for cashflow (delegates to excel/libre handlers)
-            .AddSingleton<IDocumentHandler, CashStatementHandler>()
-            // Excel implementation + its repository
-            .AddSingleton<CashStatementExcelHandler>()
             .AddSingleton<ICashFlowRepository, SqlServerCashFlowRepository>()
-            // Libre implementation (shells out to Python)
-            .AddSingleton<CashStatementLibreHandler>()
+            .AddSingleton(provider => new CashStatementBuilder(
+                provider.GetRequiredService<ICashFlowRepository>()))
+            .AddSingleton(new CashStatementXlsxRenderer())
+            .AddSingleton(new CashStatementOdsRenderer())
+            .AddSingleton<IDocumentHandler, CashStatementHandler>()
             .AddSingleton<IPayloadValidator, CashPayloadValidator>()
             #endregion
 

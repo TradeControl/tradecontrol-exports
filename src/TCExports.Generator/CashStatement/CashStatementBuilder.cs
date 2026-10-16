@@ -142,7 +142,8 @@ public sealed class CashStatementBuilder
                 _text.Format(CashStatementText.StatementTitle, active.MonthName, active.Description),
                 requestedBy,
                 generatedAt,
-                StatementPeriodId.Month(active.YearNumber, checked((byte)active.MonthNumber))),
+                StatementPeriodId.Month(active.YearNumber, checked((byte)active.MonthNumber)),
+                _text.Get(CashStatementText.Date)),
             request,
             periodGrid,
             sheets.ToImmutable());
@@ -1162,11 +1163,16 @@ public sealed class CashStatementBuilder
         var rows = ImmutableArray.CreateBuilder<StatementRow>();
         var overallStatus = sourceRows.Select(row => ReconciliationStatus(row.Variance, tolerance))
             .Aggregate("PASS", WorstReconciliationStatus);
+        var overallStatusFormula = OverallStatusFormula(sourceRows.Select(source =>
+            new StatementCellAddress(
+                sheetId,
+                new StatementRowId($"reconciliation:{source.YearNumber}"),
+                new StatementColumnId("status"))));
         rows.Add(new StatementRow(
             new StatementRowId("reconciliation:summary"),
             StatementRowKind.Metadata,
             rows.Count,
-            _text.Get(CashStatementText.Reconciliation),
+            _text.Get(CashStatementText.ReconciliationChecks),
             null,
             ReconciliationRole(overallStatus),
             ImmutableDictionary<StatementColumnId, StatementCell>.Empty
@@ -1177,7 +1183,8 @@ public sealed class CashStatementBuilder
                 .Add(new StatementColumnId("status"), new StatementCell(
                     StatementValue.FromText(overallStatus),
                     null,
-                    ReconciliationRole(overallStatus)))));
+                    ReconciliationRole(overallStatus),
+                    overallStatusFormula))));
 
         foreach (var source in sourceRows)
         {
@@ -1291,6 +1298,33 @@ public sealed class CashStatementBuilder
                     StatementUnaryOperator.Absolute,
                     new StatementFormulaReference(address)),
                 new StatementFormulaLiteral(StatementValue.FromDecimal(limit)));
+
+        static StatementFormula OverallStatusFormula(IEnumerable<StatementCellAddress> statusAddresses)
+        {
+            var addresses = statusAddresses.ToArray();
+            StatementFormula result = new StatementFormulaLiteral(StatementValue.FromText("PASS"));
+            foreach (var address in addresses.Reverse())
+            {
+                result = new StatementFormulaConditional(
+                    new StatementFormulaBinary(
+                        StatementBinaryOperator.Equal,
+                        new StatementFormulaReference(address),
+                        new StatementFormulaLiteral(StatementValue.FromText("WARN"))),
+                    new StatementFormulaLiteral(StatementValue.FromText("WARN")),
+                    result);
+            }
+            foreach (var address in addresses.Reverse())
+            {
+                result = new StatementFormulaConditional(
+                    new StatementFormulaBinary(
+                        StatementBinaryOperator.Equal,
+                        new StatementFormulaReference(address),
+                        new StatementFormulaLiteral(StatementValue.FromText("FAIL"))),
+                    new StatementFormulaLiteral(StatementValue.FromText("FAIL")),
+                    result);
+            }
+            return result;
+        }
     }
 
     private static string ReconciliationStatus(decimal variance, decimal tolerance) =>

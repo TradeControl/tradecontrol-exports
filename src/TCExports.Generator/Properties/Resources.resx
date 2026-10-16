@@ -142,7 +142,7 @@
     <value>BALANCE SHEET</value>
   </data>
   <data name="TextCashFlow" xml:space="preserve">
-    <value>CASH FLOW</value>
+    <value>Cash Flow</value>
   </data>
   <data name="TextCapital" xml:space="preserve">
     <value>CAPITAL</value>
@@ -256,51 +256,54 @@
     <value>CHANGE IN EQUITY</value>
   </data>
   <data name="TextReconDifference" xml:space="preserve">
-    <value>DIFFERENCE</value>
+    <value>Difference</value>
   </data>
   <data name="TextReconciliation" xml:space="preserve">
-    <value>RECONCILIATION</value>
+    <value>Reconciliation</value>
+  </data>
+  <data name="TextReconciliationChecks" xml:space="preserve">
+    <value>Submission checks (Does it add up?)</value>
   </data>
   <data name="TextYear" xml:space="preserve">
-    <value>YEAR</value>
+    <value>Year</value>
   </data>
   <data name="TextDescription" xml:space="preserve">
-    <value>DESCRIPTION</value>
+    <value>Description</value>
   </data>
   <data name="TextOpeningCapital" xml:space="preserve">
-    <value>OPENING CAPITAL</value>
+    <value>OpeningCapital</value>
   </data>
   <data name="TextClosingCapital" xml:space="preserve">
-    <value>CLOSING CAPITAL</value>
+    <value>ClosingCapital</value>
   </data>
   <data name="TextProfit" xml:space="preserve">
-    <value>PROFIT</value>
+    <value>Profit</value>
   </data>
   <data name="TextBusinessTax" xml:space="preserve">
-    <value>BUSINESS TAX</value>
+    <value>BusinessTax</value>
   </data>
   <data name="TextProfitAfterTax" xml:space="preserve">
-    <value>PROFIT AFTER TAX</value>
+    <value>ProfitAfterTax</value>
   </data>
   <data name="TextCapitalMovement" xml:space="preserve">
-    <value>CAPITAL MOVEMENT</value>
+    <value>CapitalMovement</value>
   </data>
   <data name="TextOpeningSubjectPosition" xml:space="preserve">
-    <value>OPENING SUBJECT POSITION</value>
+    <value>OpeningSubjectPosition</value>
   </data>
   <data name="TextOpeningAccountPosition" xml:space="preserve">
-    <value>OPENING ACCOUNT POSITION</value>
+    <value>OpeningAccountPosition</value>
   </data>
   <data name="TextCapitalDelta" xml:space="preserve">
-    <value>CAPITAL DELTA</value>
+    <value>CapitalDelta</value>
   </data>
   <data name="TextBridgeTotal" xml:space="preserve">
-    <value>BRIDGE TOTAL</value>
+    <value>BridgeTotal</value>
   </data>
   <data name="TextStatus" xml:space="preserve">
-    <value>STATUS</value>
+    <value>Status</value>
   </data>
   <data name="TextTolerance" xml:space="preserve">
-    <value>TOLERANCE</value>
+    <value>Tolerance</value>
   </data>
 </root>

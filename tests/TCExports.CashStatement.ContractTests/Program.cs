@@ -2,10 +2,15 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using TCExports.Generator;
 using TCExports.Generator.CashStatement;
 using TCExports.Generator.CashStatement.Model;
 using TCExports.Generator.Contracts;
 using TCExports.Generator.Data;
+using TCExports.Generator.Excel;
+using TCExports.Generator.Handlers;
+using TCExports.Generator.Ods;
+using TCExports.Generator.Validation;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -18,6 +23,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("model types do not depend on spreadsheet or database packages", Sync(ModelIsRendererNeutral)),
     ("default limits cover the accepted baselines while remaining bounded", Sync(LimitsCoverBaselines)),
     ("typed boundary parsing rejects invalid and unknown options", Sync(TypedBoundaryParsing)),
+    ("cash export validation accepts both native spreadsheet formats", CashExportValidation),
+    ("cash export handler routes both formats through the shared model", NativeFormatRouting),
     ("period grid preserves a non-January financial calendar", Sync(NonJanuaryPeriodGrid)),
     ("formula evaluator uses authoritative values and lazy conditionals", Sync(FormulaEvaluation)),
     ("money and ratio calculations preserve deterministic decimal precision", Sync(DecimalPrecisionSemantics)),
@@ -74,6 +81,91 @@ static Func<Task> Sync(Action action) => () =>
     action();
     return Task.CompletedTask;
 };
+
+static async Task CashExportValidation()
+{
+    var repository = CreateFlowRepository();
+    var handler = new CashStatementHandler(
+        new CashStatementBuilder(repository),
+        new CashStatementXlsxRenderer(),
+        new CashStatementOdsRenderer());
+    var validator = new CashPayloadValidator();
+
+    foreach (var format in new[] { "excel", "libre" })
+    {
+        var payload = new ExportPayload
+        {
+            SqlConnection = "Server=(test);Database=(test)",
+            UserName = "contract-test",
+            DocumentType = "cashflow",
+            Format = format
+        };
+        validator.Normalize(payload);
+        Require(validator.TryValidate(payload, out var errors),
+            $"{format} was rejected: {string.Join(';', errors.SelectMany(error => error.Value))}");
+        Require(payload.Params.ContainsKey("includeReconciliation"),
+            "reconciliation default was not normalized");
+    }
+
+    var invalid = new ExportPayload
+    {
+        SqlConnection = "Server=(test);Database=(test)",
+        UserName = "contract-test",
+        DocumentType = "cashflow",
+        Format = "csv",
+        Params = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["commandTimeout"] = "0",
+            ["unknown"] = "true"
+        }
+    };
+    var engine = new ExportEngine(new[] { handler }, new IPayloadValidator[] { validator });
+    var result = await engine.GenerateAsync(invalid);
+    Equal("error", result.Status, "invalid export status");
+    Equal("VALIDATION_ERROR", result.Code, "invalid export code");
+    Require(result.Details?.ContainsKey("format") == true, "invalid format was not reported");
+    Require(result.Details?.ContainsKey("params.commandTimeout") == true, "invalid timeout was not reported");
+    Require(result.Details?.ContainsKey("params.unknown") == true, "unknown option was not reported");
+}
+
+static async Task NativeFormatRouting()
+{
+    foreach (var format in new[] { "excel", "libre" })
+    {
+        var handler = new CashStatementHandler(
+            new CashStatementBuilder(CreateFlowRepository()),
+            new CashStatementXlsxRenderer(),
+            new CashStatementOdsRenderer());
+        var payload = new ExportPayload
+        {
+            SqlConnection = "Server=(test);Database=(test)",
+            UserName = "contract-test",
+            DocumentType = "cashflow",
+            Format = format,
+            Params = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["includeActivePeriods"] = "true",
+                ["includeOrderBook"] = "true",
+                ["includeTaxAccruals"] = "true",
+                ["includeVatDetails"] = "false",
+                ["includeBankBalances"] = "false",
+                ["includeBalanceSheet"] = "false",
+                ["includeReconciliation"] = "false",
+                ["commandTimeout"] = "30"
+            }
+        };
+
+        var result = await handler.HandleAsync(payload, CancellationToken.None);
+        Equal("success", result.Status, $"{format} status");
+        var extension = format == "excel" ? ".xlsx" : ".ods";
+        Require(result.FileName?.EndsWith(extension, StringComparison.OrdinalIgnoreCase) == true,
+            $"{format} file extension was incorrect");
+        var bytes = Convert.FromBase64String(result.FileContent!);
+        Require(bytes.Length > 1_000, $"{format} output was unexpectedly small");
+        Equal((byte)'P', bytes[0], $"{format} ZIP signature byte 1");
+        Equal((byte)'K', bytes[1], $"{format} ZIP signature byte 2");
+    }
+}
 
 static void WriteEvidenceIfRequested(string[] arguments, IReadOnlyList<ContractTestResult> results)
 {
@@ -788,6 +880,8 @@ static async Task ReconciliationBuilderEvaluation()
     Equal("WARN", TextCell(document, "reconciliation:2025", "status"), "WARN status");
     Equal("FAIL", TextCell(document, "reconciliation:2026", "status"), "FAIL status");
     Equal("FAIL", TextCell(document, "reconciliation:summary", "status"), "overall status");
+    Require(FindCell(document, "reconciliation:summary", "status").Formula is StatementFormulaConditional,
+        "overall reconciliation status is not a shared-model formula");
     Equal(1, repository.ReconciliationCalls, "reconciliation calls");
 }
 

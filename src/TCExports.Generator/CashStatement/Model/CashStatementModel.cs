@@ -333,7 +333,8 @@ public sealed record CashStatementMetadata(
     string Title,
     string RequestedBy,
     DateTimeOffset GeneratedAt,
-    StatementPeriodId ActivePeriod);
+    StatementPeriodId ActivePeriod,
+    string DateLabel = "Date:");
 
 /// <summary>
 /// Immutable renderer-neutral Cash Statement. Sheets are already ordered for presentation;

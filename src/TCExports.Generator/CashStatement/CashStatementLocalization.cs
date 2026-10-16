@@ -6,6 +6,7 @@ namespace TCExports.Generator.CashStatement;
 public enum CashStatementText
 {
     StatementTitle,
+    Date,
     CashFlow,
     Code,
     Name,
@@ -33,6 +34,7 @@ public enum CashStatementText
     BalanceSheet,
     Capital,
     Reconciliation,
+    ReconciliationChecks,
     Year,
     Description,
     OpeningCapital,
@@ -73,6 +75,7 @@ public sealed class ResourceCashStatementLocalizer : ICashStatementLocalizer
         new Dictionary<CashStatementText, string>
         {
             [CashStatementText.StatementTitle] = "TextStatementTitle",
+            [CashStatementText.Date] = "TextDate",
             [CashStatementText.CashFlow] = "TextCashFlow",
             [CashStatementText.Code] = "TextCode",
             [CashStatementText.Name] = "TextName",
@@ -100,6 +103,7 @@ public sealed class ResourceCashStatementLocalizer : ICashStatementLocalizer
             [CashStatementText.BalanceSheet] = "TextBalanceSheet",
             [CashStatementText.Capital] = "TextCapital",
             [CashStatementText.Reconciliation] = "TextReconciliation",
+            [CashStatementText.ReconciliationChecks] = "TextReconciliationChecks",
             [CashStatementText.Year] = "TextYear",
             [CashStatementText.Description] = "TextDescription",
             [CashStatementText.OpeningCapital] = "TextOpeningCapital",

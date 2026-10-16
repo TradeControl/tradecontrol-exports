@@ -26,7 +26,7 @@ public sealed class ExportEngine : IExportEngine
 
             v.Normalize(payload);
 
-            if (!v.TryValidate(payload, out var errors)) continue;
+            v.TryValidate(payload, out var errors);
 
             // accumulate any returned errors
             foreach (var kvp in errors)
