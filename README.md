@@ -7,15 +7,16 @@ ERP-driven data export library for Trade Control Ltd.
 
 ## Features
 - Export ERP data to **Office XLSX**
-- Pluggable document handlers for additional formats
-- Experimental native **OpenDocument Spreadsheet (ODS)** Cash Statement generator
+- Export the Cash Statement to native **OpenDocument Spreadsheet (ODS)**
+- One immutable, format-neutral Cash Statement model rendered by both formats
 - Integration with ASP.NET endpoints
-- Clean separation of requirements and implementation
+- In-process .NET generation with no Python, ODBC, office automation, or server-side LibreOffice dependency
 
 ## Current Status
-- XLSX Cash Statement: operational and the current supported export path.
-- ODS (Libre) Cash Statement: feasibility confirmed across the four synthetic company and sole-trader template scenarios. Native ODS files can be generated and opened by LibreOffice, but numerical parity and deployment issues remain; the route is experimental and must not yet be used for production financial reporting.
-- ODS development is deferred while tax/accounts integration is the active priority. Future work will use one format-neutral Cash Statement model with thin XLSX and ODS renderers rather than maintaining two independent calculation engines.
+- XLSX and ODS Cash Statements are supported through the same C# builder and accepted native renderers.
+- The four-fixture equivalence suite, exhaustive tri-format comparison, authenticated UI checks, and Azure service qualification are complete.
+- ODS can be disabled independently while the accepted XLSX path remains available.
+- The former Python ODS prototype and child-process route have been removed from the source and production publish graph. Their history remains available in Git.
 - Packaging: internal only; no NuGet publishing. The ASP.NET repo vendors this repo and references the project directly.
 
 The investigation findings, confirmed defects, recommended architecture, implementation phases, and release acceptance matrix are recorded in [ODS Cash Statement Generation](docs/ods-statement-generation.md).
@@ -33,17 +34,14 @@ The investigation findings, confirmed defects, recommended architecture, impleme
 
 ### Configuration
 - Provide the ERP connection string via ASP.NET configuration.
-- Disable ODS features via a feature flag until reinstated.
+- Use the Cash Statement service settings to control ODS availability and bounded generation.
 
 ### Developer notes
 - Build: __Build Solution__
 - Local testing: `TCExports.WebHarness` remains a harness in this repo and is not deployed.
 
-## Roadmap (paused items)
-- Extract a shared, format-neutral Cash Statement model while preserving XLSX behaviour.
-- Reduce the existing Python ODS implementation to a renderer of that shared model.
-- Qualify ODS for Accounts Mode using the four-fixture numerical parity and LibreOffice acceptance suite.
-- Add CSV/PDF exporters through the document-handler contract.
+## Roadmap
+- Add further formats only through the shared document-handler contract and with their own acceptance evidence.
 
 ## License
 Licensed under the **GNU General Public License v3.0**.

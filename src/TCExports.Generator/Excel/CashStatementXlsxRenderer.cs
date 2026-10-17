@@ -44,7 +44,9 @@ public sealed class CashStatementXlsxRenderer
             RenderReconciliation(workbook, reconciliation, layout, ct);
 
         using var output = new MemoryStream();
+        ct.ThrowIfCancellationRequested();
         workbook.SaveAs(output);
+        ct.ThrowIfCancellationRequested();
         if (output.Length > _limits.MaxOutputBytes)
         {
             throw new InvalidOperationException(

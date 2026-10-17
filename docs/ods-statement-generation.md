@@ -2,9 +2,9 @@
 
 ## Status
 
-This document records the September 2026 feasibility investigation into restoring native OpenDocument Spreadsheet (`.ods`) Cash Statement generation in TCExports.
+This document is the historical record of the September 2026 feasibility investigation into restoring native OpenDocument Spreadsheet (`.ods`) Cash Statement generation in TCExports. Its descriptions of the Python and legacy XLSX implementations are intentionally preserved as investigation evidence, not current architecture.
 
-The work is deliberately deferred while the product team concentrates on tax and accounts integration. No production commitment or implementation schedule is implied by this document. The intended outcome is to preserve enough technical evidence and design direction to resume the work for the Accounts Mode launch without repeating the investigation.
+The subsequent project completed and was accepted on 17 October 2026. XLSX and ODS now consume one immutable C# statement model, the native C# ODS writer was accepted, both formats passed the product and Azure qualification gates, and the Python source and child-process runtime were removed from the production publish graph. The maintained plan and final evidence are recorded in the [Cash Statement workplan](https://github.com/TradeControl/tradecontrol.web/blob/main/docs/projects/Statements/Cash%20Statement/cash-statement-workplan.md).
 
 ## Executive conclusion
 

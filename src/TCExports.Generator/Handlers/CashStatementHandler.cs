@@ -76,6 +76,7 @@ public sealed class CashStatementHandler : IDocumentHandler
                 extension = "ods";
             }
 
+            ct.ThrowIfCancellationRequested();
             var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
             var safeUser = SanitizeFilePart(payload.UserName);
             return new ExportResult
@@ -89,7 +90,7 @@ public sealed class CashStatementHandler : IDocumentHandler
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return new ExportResult
             {
@@ -98,7 +99,7 @@ public sealed class CashStatementHandler : IDocumentHandler
                 Message = "Cash Statement generation failed.",
                 Details = new Dictionary<string, string[]>
                 {
-                    ["generation"] = new[] { ex.Message }
+                    ["generation"] = new[] { "The generator stopped unexpectedly." }
                 }
             };
         }

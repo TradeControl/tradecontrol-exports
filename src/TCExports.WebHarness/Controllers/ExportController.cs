@@ -9,9 +9,11 @@ namespace TCExports.WebHarness.Controllers;
 public class ExportController : ControllerBase
 {
     [HttpPost]
-    public async Task<IActionResult> Export([FromBody] ExportPayload payload)
+    public async Task<IActionResult> Export(
+        [FromBody] ExportPayload payload,
+        CancellationToken cancellationToken)
     {
-        var result = await ExportRunner.ExportDataAsync(payload);
+        var result = await ExportRunner.ExportDataAsync(payload, cancellationToken);
 
         if (result.Status != "success")
             return BadRequest(result);

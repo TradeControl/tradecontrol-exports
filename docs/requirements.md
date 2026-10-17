@@ -2,8 +2,8 @@
 
 ## Scope
 - Provide ERP-driven export services callable from ASP.NET endpoints.
-- Primary target format: Office Excel (XLSX).
-- Secondary formats (ODS, CSV, PDF) are optional and may be introduced later.
+- Supported Cash Statement formats: Office Excel (XLSX) and OpenDocument Spreadsheet (ODS).
+- Other formats such as CSV and PDF are optional future work.
 - Internal consumption only: this library is vendored into the ASP.NET repo (no NuGet distribution).
 
 ## Functional Requirements
@@ -12,22 +12,24 @@
 - Log and surface errors to the caller with meaningful messages.
 
 ## Non-Functional Requirements
-- Works with ASP.NET (.NET 8).
-- Clear separation between exporter contract (`IExporter`) and concrete implementations.
+- Works with the ASP.NET application on .NET 9.
+- Clear separation between the document-handler contract (`IDocumentHandler`) and concrete implementations.
 - Testability: unit-level for data shaping; integration-level for document generation.
-- Packaging: .NET 8 class library consumed via ProjectReference.
+- Packaging: .NET 9 class library consumed via ProjectReference.
+- Cash Statement generation is in-process C# and must not require Python, ODBC, office automation, or server-side LibreOffice.
 
 ## Out of Scope (for now)
-- Libre ODS Cash Statement formatting and load-time value enforcement.
-- Row-level styling and complex post-processing of ODS content.
+- CSV and PDF Cash Statement renderers.
 - Public NuGet packaging and distribution.
 
 
 ## Configuration
 - Connection strings via ASP.NET configuration.
-- Feature flags to enable/disable experimental exporters (disable ODS in production).
+- A feature flag can disable ODS independently without changing the XLSX path.
 
 ## Acceptance
-- XLSX exports function end-to-end through the web app using a ProjectReference to the vendored library.
-- ODS path is disabled without impacting the rest of the system.
+- XLSX and ODS exports function end-to-end through the web app using a ProjectReference to the vendored library.
+- Both renderers consume the same accepted immutable statement model.
+- ODS can be disabled without impacting XLSX.
+- Published application output contains no Python source or Python/ODBC/`odfdo`/`lxml` runtime dependency.
 - Documentation reflects internal-only usage and deployment guidance.

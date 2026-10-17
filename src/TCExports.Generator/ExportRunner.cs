@@ -11,8 +11,12 @@ namespace TCExports.Generator;
 
 public static class ExportRunner
 {
-    public static async Task<ExportResult> ExportDataAsync(ExportPayload payload)
+    public static async Task<ExportResult> ExportDataAsync(
+        ExportPayload payload,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!GenericPayloadValidator.TryValidate(payload, out var errors))
         {
             return new ExportResult
@@ -24,15 +28,7 @@ public static class ExportRunner
             };
         }
 
-        var services = new ServiceCollection()
-
-            #region test 
-            .AddSingleton<IDocumentHandler, TestHandler>()
-            .AddSingleton<TestCsvHandler>()
-            .AddSingleton<TestExcelHandler>()
-            .AddSingleton<TestLibreHandler>()            
-            .AddSingleton<IPayloadValidator, TestPayloadValidator>()
-            #endregion
+        using var services = new ServiceCollection()
 
             #region cash flow statements
             .AddSingleton<ICashFlowRepository, SqlServerCashFlowRepository>()
@@ -48,6 +44,6 @@ public static class ExportRunner
             .BuildServiceProvider();
 
         var engine = services.GetRequiredService<IExportEngine>();
-        return await engine.GenerateAsync(payload);
+        return await engine.GenerateAsync(payload, cancellationToken).ConfigureAwait(false);
     }
 }

@@ -17,11 +17,14 @@ public sealed class ExportEngine : IExportEngine
 
     public async Task<ExportResult> GenerateAsync(ExportPayload payload, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         // Run all matching validators (normalize first, then validate)
         var aggregated = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var v in _validators)
         {
+            ct.ThrowIfCancellationRequested();
             if (!v.CanValidate(payload)) continue;
 
             v.Normalize(payload);
@@ -61,6 +64,6 @@ public sealed class ExportEngine : IExportEngine
             };
         }
 
-        return await handler.HandleAsync(payload, ct);
+        return await handler.HandleAsync(payload, ct).ConfigureAwait(false);
     }
 }

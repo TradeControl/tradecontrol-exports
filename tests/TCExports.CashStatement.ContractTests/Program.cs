@@ -25,6 +25,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("typed boundary parsing rejects invalid and unknown options", Sync(TypedBoundaryParsing)),
     ("cash export validation accepts both native spreadsheet formats", CashExportValidation),
     ("cash export handler routes both formats through the shared model", NativeFormatRouting),
+    ("export runner honours caller cancellation", ExportRunnerCancellation),
+    ("builder observes cancellation during source acquisition", BuilderSourceCancellation),
+    ("native renderers observe cancellation during serialization", RendererCancellation),
     ("period grid preserves a non-January financial calendar", Sync(NonJanuaryPeriodGrid)),
     ("formula evaluator uses authoritative values and lazy conditionals", Sync(FormulaEvaluation)),
     ("money and ratio calculations preserve deterministic decimal precision", Sync(DecimalPrecisionSemantics)),
@@ -126,6 +129,95 @@ static async Task CashExportValidation()
     Require(result.Details?.ContainsKey("format") == true, "invalid format was not reported");
     Require(result.Details?.ContainsKey("params.commandTimeout") == true, "invalid timeout was not reported");
     Require(result.Details?.ContainsKey("params.unknown") == true, "unknown option was not reported");
+}
+
+static async Task ExportRunnerCancellation()
+{
+    using var cancellation = new CancellationTokenSource();
+    cancellation.Cancel();
+    try
+    {
+        await ExportRunner.ExportDataAsync(new ExportPayload(), cancellation.Token);
+    }
+    catch (OperationCanceledException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException("A cancelled caller reached export validation.");
+}
+
+static async Task BuilderSourceCancellation()
+{
+    using var cancellation = new CancellationTokenSource();
+    var repository = new StubCashFlowRepository { CancelAfterFirstCall = cancellation };
+    var builder = new CashStatementBuilder(repository);
+
+    try
+    {
+        await builder.BuildAsync(
+            "Server=(test);Database=(test)",
+            new CashStatementRequestV1(),
+            "contract-test",
+            DateTimeOffset.UnixEpoch,
+            cancellation.Token);
+    }
+    catch (OperationCanceledException)
+    {
+        Equal(1, repository.Calls.Count, "repository calls before cancellation");
+        return;
+    }
+
+    throw new InvalidOperationException("Builder continued after source acquisition was cancelled.");
+}
+
+static async Task RendererCancellation()
+{
+    var build = await new CashStatementBuilder(CreateFlowRepository()).BuildAsync(
+        "Server=(test);Database=(test)",
+        new CashStatementRequestV1(),
+        "contract-test",
+        DateTimeOffset.UnixEpoch,
+        CancellationToken.None);
+    Require(build.IsSuccess, "Serialization cancellation fixture did not build.");
+    var document = build.Value!;
+
+    using (var cancellation = new CancellationTokenSource())
+    {
+        var renderer = new CashStatementXlsxRenderer(
+            allocator: new CancellingLayoutAllocator(
+                new CashStatementXlsxLayoutAllocator(),
+                cancellation));
+        try
+        {
+            renderer.Render(document, cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            goto ods;
+        }
+
+        throw new InvalidOperationException("XLSX renderer continued after serialization was cancelled.");
+    }
+
+ods:
+    using (var cancellation = new CancellationTokenSource())
+    {
+        var renderer = new CashStatementOdsRenderer(
+            allocator: new CancellingLayoutAllocator(
+                new CashStatementOdsLayoutAllocator(),
+                cancellation));
+        try
+        {
+            await renderer.RenderAsync(document, cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException("ODS renderer continued after serialization was cancelled.");
+    }
 }
 
 static async Task NativeFormatRouting()
@@ -1042,6 +1134,7 @@ static void Require(bool condition, string message)
 
 sealed class StubCashFlowRepository : ICashFlowRepository
 {
+    public CancellationTokenSource? CancelAfterFirstCall { get; init; }
     public ActivePeriodDto ActivePeriod { get; init; } = new();
     public IReadOnlyList<ActiveYearDto> Years { get; init; } = Array.Empty<ActiveYearDto>();
     public IReadOnlyList<MonthDto> Months { get; set; } = Array.Empty<MonthDto>();
@@ -1238,6 +1331,20 @@ sealed class StubCashFlowRepository : ICashFlowRepository
     {
         ct.ThrowIfCancellationRequested();
         Calls.Add((timeout, ct));
+        if (Calls.Count == 1)
+            CancelAfterFirstCall?.Cancel();
+    }
+}
+
+sealed class CancellingLayoutAllocator(
+    ICashStatementLayoutAllocator inner,
+    CancellationTokenSource cancellation) : ICashStatementLayoutAllocator
+{
+    public StatementLayout Allocate(CashStatementDocument document, CashStatementLimits limits)
+    {
+        var layout = inner.Allocate(document, limits);
+        cancellation.Cancel();
+        return layout;
     }
 }
 

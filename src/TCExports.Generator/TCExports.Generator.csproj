@@ -7,20 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Copy entire python folder (and subfolders/files) to output -->
-    <Content Include="python\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-</ItemGroup>
-
-  <ItemGroup>
     <Folder Include="Exports\" />
     <Folder Include="Rendering\" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
-    <PackageReference Include="CsvHelper" Version="33.1.0" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
