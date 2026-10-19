@@ -17,6 +17,7 @@ ERP-driven data export library for Trade Control Ltd.
 - The four-fixture equivalence suite, exhaustive tri-format comparison, authenticated UI checks, and Azure service qualification are complete.
 - ODS can be disabled independently while the accepted XLSX path remains available.
 - The former Python ODS prototype and child-process route have been removed from the source and production publish graph. Their history remains available in Git.
+- All active generator, harness and test projects target .NET 10 LTS.
 - Packaging: internal only; no NuGet publishing. The ASP.NET repo vendors this repo and references the project directly.
 
 The investigation findings, confirmed defects, recommended architecture, implementation phases, and release acceptance matrix are recorded in [ODS Cash Statement Generation](docs/ods-statement-generation.md).
