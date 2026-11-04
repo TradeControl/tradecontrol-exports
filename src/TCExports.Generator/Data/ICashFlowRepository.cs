@@ -4,6 +4,18 @@ namespace TCExports.Generator.Data;
 
 public interface ICashFlowRepository
 {
+    Task<CategoryTreeVersionResolutionDto> ResolveCategoryTreeVersionAsync(
+        string connectionString,
+        string? categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<string>> GetCategoryTreeProjectionMismatchesAsync(
+        string connectionString,
+        string categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<CashCodePeriodValue>> GetCashCodeValuesAsync(
         string connectionString,
         string cashCode,
@@ -19,15 +31,16 @@ public interface ICashFlowRepository
     Task<IReadOnlyList<ActiveYearDto>> GetActiveYearsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
     Task<IReadOnlyList<MonthDto>> GetMonthsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 
-    Task<IReadOnlyList<FlowCategoryDto>> GetCategoriesAsync(string connectionString, CashType cashType, int commandTimeoutSeconds = 30, CancellationToken ct = default);
-    Task<IReadOnlyList<FlowCategoryCashCodeDto>> GetCashCodesAsync(string connectionString, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default);
-    Task<IReadOnlyList<FlowCategoriesByTypeDto>> GetCategoriesByTypeAsync(string connectionString, CashType cashType, CategoryType categoryType, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<FlowCategoryDto>> GetCategoriesAsync(string connectionString, string categoryVersionId, CashType cashType, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<FlowCategoryCashCodeDto>> GetCashCodesAsync(string connectionString, string categoryVersionId, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<UnmappedCashCodeDto>> GetUnmappedTransactionCashCodesAsync(string connectionString, string categoryVersionId, short fromYearNumber, short toYearNumber, bool includeOrderBook, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<FlowCategoriesByTypeDto>> GetCategoriesByTypeAsync(string connectionString, string categoryVersionId, CashType cashType, CategoryType categoryType, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 
-    Task<IReadOnlyList<CategoryTotalDto>> GetCategoryTotalsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
-    Task<IReadOnlyList<string>> GetCategoryTotalCodesAsync(string connectionString, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<CategoryTotalDto>> GetCategoryTotalsAsync(string connectionString, string categoryVersionId, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<string>> GetCategoryTotalCodesAsync(string connectionString, string categoryVersionId, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 
-    Task<IReadOnlyList<CategoryExpressionDto>> GetCategoryExpressionsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
-    Task<string> GetCategoryCodeFromNameAsync(string connectionString, string categoryName, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<CategoryExpressionDto>> GetCategoryExpressionsAsync(string connectionString, string categoryVersionId, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<string> GetCategoryCodeFromNameAsync(string connectionString, string categoryVersionId, string categoryName, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 
     Task SetCategoryExpressionStatusAsync(
         string connectionString,

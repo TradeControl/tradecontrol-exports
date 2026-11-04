@@ -23,6 +23,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("model types do not depend on spreadsheet or database packages", Sync(ModelIsRendererNeutral)),
     ("default limits cover the accepted baselines while remaining bounded", Sync(LimitsCoverBaselines)),
     ("typed boundary parsing rejects invalid and unknown options", Sync(TypedBoundaryParsing)),
+    ("Category Tree version resolution keeps the core graph coherent and gates active-dependent sections", CategoryVersionResolution),
     ("cash export validation accepts both native spreadsheet formats", CashExportValidation),
     ("cash export handler routes both formats through the shared model", NativeFormatRouting),
     ("export runner honours caller cancellation", ExportRunnerCancellation),
@@ -299,6 +300,7 @@ static void RequestDefaults()
     Equal(true, request.IncludeBalanceSheet, nameof(request.IncludeBalanceSheet));
     Equal(false, request.IncludeReconciliation, nameof(request.IncludeReconciliation));
     Equal(30, request.CommandTimeoutSeconds, nameof(request.CommandTimeoutSeconds));
+    Equal(null, request.CategoryVersionId, nameof(request.CategoryVersionId));
     Equal(1, CashStatementRequestV1.ContractVersion, nameof(CashStatementRequestV1.ContractVersion));
     Equal(1, request.Version, nameof(request.Version));
 }
@@ -490,7 +492,8 @@ static void TypedBoundaryParsing()
         ["includeBankBalances"] = "0",
         ["includeBalanceSheet"] = "no",
         ["includeReconciliation"] = "y",
-        ["commandTimeout"] = "75"
+        ["commandTimeout"] = "75",
+        ["categoryVersionId"] = "cv00000002"
     });
 
     Require(valid.IsSuccess, "valid typed request did not parse");
@@ -501,18 +504,130 @@ static void TypedBoundaryParsing()
     Equal(false, valid.Value.IncludeBalanceSheet, "balance sheet");
     Equal(true, valid.Value.IncludeReconciliation, "reconciliation");
     Equal(75, valid.Value.CommandTimeoutSeconds, "command timeout");
+    Equal("CV00000002", valid.Value.CategoryVersionId, "Category Tree version");
 
     var invalid = CashStatementRequestParser.Parse(new Dictionary<string, string>
     {
         ["includeActivePeriods"] = "perhaps",
         ["includeBankTypes"] = "true",
-        ["commandTimeout"] = "601"
+        ["commandTimeout"] = "601",
+        ["categoryVersionId"] = "version-two"
     });
 
     Require(!invalid.IsSuccess, "invalid request parsed successfully");
     Require(invalid.Violations.Any(v => v.Code == "OPTION_BOOLEAN_INVALID"), "invalid Boolean was not reported");
     Require(invalid.Violations.Any(v => v.Code == "OPTION_UNKNOWN"), "unknown option was not reported");
     Require(invalid.Violations.Any(v => v.Code == "OPTION_TIMEOUT_INVALID"), "invalid timeout was not reported");
+    Require(invalid.Violations.Any(v => v.Code == "OPTION_CATEGORY_VERSION_INVALID"),
+        "invalid Category Tree version was not reported");
+}
+
+static async Task CategoryVersionResolution()
+{
+    var repository = CreateFlowRepository();
+    var request = new CashStatementRequestV1(
+        IncludeActivePeriods: false,
+        IncludeTaxAccruals: false,
+        IncludeVatDetails: false,
+        IncludeBankBalances: false,
+        IncludeBalanceSheet: false);
+    var active = await new CashStatementBuilder(repository).BuildAsync(
+        "Server=(test);Database=(test)",
+        request,
+        "contract-test",
+        DateTimeOffset.UtcNow);
+    Require(active.IsSuccess, "active-default Category Tree resolution failed");
+    Equal("CV00000001", active.Value!.CategoryTree!.SelectedVersion.VersionId,
+        "resolved active Category Tree version");
+    Require(active.Value.CategoryTree.IsActiveSelection,
+        "active-default statement was not marked as an active selection");
+    Require(repository.CategoryVersionCalls.Count > 0
+        && repository.CategoryVersionCalls.All(versionId => versionId == "CV00000001"),
+        "the core category graph did not use one resolved Category Tree version");
+
+    var missingMappingRepository = CreateFlowRepository();
+    missingMappingRepository.UnmappedCashCodes = new[]
+    {
+        new UnmappedCashCodeDto("CC-LATER", "Later Cash Code")
+    };
+    var missingMapping = await new CashStatementBuilder(missingMappingRepository).BuildAsync(
+        "Server=(test);Database=(test)",
+        request,
+        "contract-test",
+        DateTimeOffset.UtcNow);
+    Require(!missingMapping.IsSuccess
+        && missingMapping.Violations.Any(item =>
+            item.Code == "CATEGORY_VERSION_CASH_CODE_UNMAPPED"
+            && item.Message.Contains("CC-LATER", StringComparison.Ordinal)),
+        "transaction-bearing Cash Codes missing from the selected mapping were not rejected");
+
+    var archived = new CategoryTreeVersionDto(
+        "CV00000002",
+        "Archived contract test tree",
+        3,
+        "Archived",
+        new DateTime(2025, 1, 1),
+        new DateTime(2026, 1, 1),
+        new DateTime(2025, 6, 1),
+        new string('B', 64),
+        2);
+    repository.CategoryTreeResolution = new(
+        repository.CategoryTreeResolution.ActiveVersion,
+        archived);
+    repository.CategoryVersionCalls.Clear();
+    var historical = await new CashStatementBuilder(repository).BuildAsync(
+        "Server=(test);Database=(test)",
+        request with { CategoryVersionId = archived.VersionId },
+        "contract-test",
+        DateTimeOffset.UtcNow);
+    Require(historical.IsSuccess,
+        "the version-explicit core flow graph rejected an eligible historical version");
+    Require(repository.CategoryVersionCalls.Count > 0
+        && repository.CategoryVersionCalls.All(versionId => versionId == archived.VersionId),
+        "the historical core graph mixed selected and active Category Tree versions");
+
+    repository.CategoryTreeProjectionMismatches = new[] { "VAT_ROOT" };
+    var pending = await new CashStatementBuilder(repository).BuildAsync(
+        "Server=(test);Database=(test)",
+        request with { CategoryVersionId = archived.VersionId, IncludeVatDetails = true },
+        "contract-test",
+        DateTimeOffset.UtcNow);
+    Require(!pending.IsSuccess
+        && pending.Violations.Any(item => item.Code == "CATEGORY_VERSION_OPTIONAL_PROJECTION_MISMATCH"),
+        "a historical request with a changed optional-section dependency did not fail closed");
+
+    repository.CategoryTreeProjectionMismatches = new[] { "OPEN_PROJECT_POLARITY" };
+    var accrualMismatch = await new CashStatementBuilder(repository).BuildAsync(
+        "Server=(test);Database=(test)",
+        request with { CategoryVersionId = archived.VersionId, IncludeTaxAccruals = true },
+        "contract-test",
+        DateTimeOffset.UtcNow);
+    Require(!accrualMismatch.IsSuccess
+        && accrualMismatch.Violations.Any(item => item.Code == "CATEGORY_VERSION_OPTIONAL_PROJECTION_MISMATCH"),
+        "changed open-project polarity did not block historical tax accruals");
+
+    repository.CategoryTreeProjectionMismatches = new[] { "ASSET_ACCOUNT_POLARITY" };
+    var assetMismatch = await new CashStatementBuilder(repository).BuildAsync(
+        "Server=(test);Database=(test)",
+        request with { CategoryVersionId = archived.VersionId, IncludeBalanceSheet = true },
+        "contract-test",
+        DateTimeOffset.UtcNow);
+    Require(!assetMismatch.IsSuccess
+        && assetMismatch.Violations.Any(item => item.Code == "CATEGORY_VERSION_OPTIONAL_PROJECTION_MISMATCH"),
+        "changed asset-account polarity did not block the historical balance sheet");
+    repository.CategoryTreeProjectionMismatches = Array.Empty<string>();
+
+    repository.CategoryTreeResolution = new(
+        repository.CategoryTreeResolution.ActiveVersion,
+        archived with { StatusCode = 0, Status = "Draft", EffectiveFromOn = null });
+    var draft = await new CashStatementBuilder(repository).BuildAsync(
+        "Server=(test);Database=(test)",
+        request with { CategoryVersionId = archived.VersionId },
+        "contract-test",
+        DateTimeOffset.UtcNow);
+    Require(!draft.IsSuccess
+        && draft.Violations.Any(item => item.Code == "CATEGORY_VERSION_DRAFT"),
+        "Draft Category Tree selection was not rejected");
 }
 
 static void NonJanuaryPeriodGrid()
@@ -1134,13 +1249,30 @@ static void Require(bool condition, string message)
 
 sealed class StubCashFlowRepository : ICashFlowRepository
 {
+    private static readonly CategoryTreeVersionDto DefaultCategoryVersion = new(
+        "CV00000001",
+        "Contract test Category Tree",
+        1,
+        "Published",
+        new DateTime(2026, 1, 1),
+        null,
+        new DateTime(2026, 1, 1),
+        new string('A', 64),
+        1);
+
     public CancellationTokenSource? CancelAfterFirstCall { get; init; }
+    public CategoryTreeVersionResolutionDto CategoryTreeResolution { get; set; } =
+        new(DefaultCategoryVersion, DefaultCategoryVersion);
+    public IReadOnlyList<string> CategoryTreeProjectionMismatches { get; set; } =
+        Array.Empty<string>();
     public ActivePeriodDto ActivePeriod { get; init; } = new();
     public IReadOnlyList<ActiveYearDto> Years { get; init; } = Array.Empty<ActiveYearDto>();
     public IReadOnlyList<MonthDto> Months { get; set; } = Array.Empty<MonthDto>();
     public Dictionary<CashType, IReadOnlyList<FlowCategoryDto>> Categories { get; } = new();
     public Dictionary<string, IReadOnlyList<FlowCategoryCashCodeDto>> CashCodes { get; } =
         new(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyList<UnmappedCashCodeDto> UnmappedCashCodes { get; set; } =
+        Array.Empty<UnmappedCashCodeDto>();
     public Dictionary<(CashType CashType, CategoryType CategoryType), IReadOnlyList<FlowCategoriesByTypeDto>> CalculatedTotals { get; } = new();
     public Dictionary<(string CashCode, short Year), IReadOnlyList<CashCodePeriodValue>> Values { get; } = new();
     public IReadOnlyList<CategoryTotalDto> TotalCategories { get; set; } = Array.Empty<CategoryTotalDto>();
@@ -1163,7 +1295,29 @@ sealed class StubCashFlowRepository : ICashFlowRepository
     public int BalanceSheetCalls { get; private set; }
     public int ReconciliationCalls { get; private set; }
     public List<(int Timeout, CancellationToken Token)> Calls { get; } = new();
+    public List<string> CategoryVersionCalls { get; } = new();
     public List<(string CashCode, bool IncludeActivePeriods, bool IncludeOrderBook, bool IncludeTaxAccruals)> ValueCalls { get; } = new();
+
+    public Task<CategoryTreeVersionResolutionDto> ResolveCategoryTreeVersionAsync(
+        string connectionString,
+        string? categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
+        Track(commandTimeoutSeconds, ct);
+        return Task.FromResult(CategoryTreeResolution);
+    }
+
+    public Task<IReadOnlyList<string>> GetCategoryTreeProjectionMismatchesAsync(
+        string connectionString,
+        string categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
+        Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
+        return Task.FromResult(CategoryTreeProjectionMismatches);
+    }
 
     public Task<IReadOnlyList<CashCodePeriodValue>> GetCashCodeValuesAsync(
         string connectionString,
@@ -1205,49 +1359,63 @@ sealed class StubCashFlowRepository : ICashFlowRepository
         return Task.FromResult(Months);
     }
 
-    public Task<IReadOnlyList<FlowCategoryDto>> GetCategoriesAsync(string connectionString, CashType cashType, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public Task<IReadOnlyList<FlowCategoryDto>> GetCategoriesAsync(string connectionString, string categoryVersionId, CashType cashType, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
         Categories.TryGetValue(cashType, out var categories);
         return Task.FromResult(categories ?? (IReadOnlyList<FlowCategoryDto>)Array.Empty<FlowCategoryDto>());
     }
 
-    public Task<IReadOnlyList<FlowCategoryCashCodeDto>> GetCashCodesAsync(string connectionString, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public Task<IReadOnlyList<FlowCategoryCashCodeDto>> GetCashCodesAsync(string connectionString, string categoryVersionId, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
         CashCodes.TryGetValue(categoryCode, out var cashCodes);
         return Task.FromResult(cashCodes ?? (IReadOnlyList<FlowCategoryCashCodeDto>)Array.Empty<FlowCategoryCashCodeDto>());
     }
 
-    public Task<IReadOnlyList<FlowCategoriesByTypeDto>> GetCategoriesByTypeAsync(string connectionString, CashType cashType, CategoryType categoryType, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public Task<IReadOnlyList<UnmappedCashCodeDto>> GetUnmappedTransactionCashCodesAsync(string connectionString, string categoryVersionId, short fromYearNumber, short toYearNumber, bool includeOrderBook, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
+        return Task.FromResult(UnmappedCashCodes);
+    }
+
+    public Task<IReadOnlyList<FlowCategoriesByTypeDto>> GetCategoriesByTypeAsync(string connectionString, string categoryVersionId, CashType cashType, CategoryType categoryType, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    {
+        Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
         CalculatedTotals.TryGetValue((cashType, categoryType), out var totals);
         return Task.FromResult(totals ?? (IReadOnlyList<FlowCategoriesByTypeDto>)Array.Empty<FlowCategoriesByTypeDto>());
     }
 
-    public Task<IReadOnlyList<CategoryTotalDto>> GetCategoryTotalsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public Task<IReadOnlyList<CategoryTotalDto>> GetCategoryTotalsAsync(string connectionString, string categoryVersionId, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
         return Task.FromResult(TotalCategories);
     }
 
-    public Task<IReadOnlyList<string>> GetCategoryTotalCodesAsync(string connectionString, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public Task<IReadOnlyList<string>> GetCategoryTotalCodesAsync(string connectionString, string categoryVersionId, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
         TotalChildren.TryGetValue(categoryCode, out var children);
         return Task.FromResult(children ?? (IReadOnlyList<string>)Array.Empty<string>());
     }
 
-    public Task<IReadOnlyList<CategoryExpressionDto>> GetCategoryExpressionsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public Task<IReadOnlyList<CategoryExpressionDto>> GetCategoryExpressionsAsync(string connectionString, string categoryVersionId, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
         return Task.FromResult(CategoryExpressions);
     }
 
-    public Task<string> GetCategoryCodeFromNameAsync(string connectionString, string categoryName, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public Task<string> GetCategoryCodeFromNameAsync(string connectionString, string categoryVersionId, string categoryName, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
+        CategoryVersionCalls.Add(categoryVersionId);
         return Task.FromResult(string.Empty);
     }
 

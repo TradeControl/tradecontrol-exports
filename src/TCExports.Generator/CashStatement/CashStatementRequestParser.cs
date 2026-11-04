@@ -20,7 +20,7 @@ public static class CashStatementRequestParser
     };
 
     private static readonly HashSet<string> SupportedNames = new(
-        BooleanNames.Append("commandTimeout"),
+        BooleanNames.Append("commandTimeout").Append("categoryVersionId"),
         StringComparer.OrdinalIgnoreCase);
 
     public static CashStatementContractResult<CashStatementRequestV1> Parse(
@@ -60,6 +60,7 @@ public static class CashStatementRequestParser
         var includeBalanceSheet = ParseBoolean(values, "includeBalanceSheet", true, violations);
         var includeReconciliation = ParseBoolean(values, "includeReconciliation", false, violations);
         var commandTimeout = ParseTimeout(values, violations);
+        var categoryVersionId = ParseCategoryVersionId(values, violations);
 
         if (violations.Count > 0)
             return new(null, violations.ToImmutable());
@@ -73,7 +74,8 @@ public static class CashStatementRequestParser
                 includeBankBalances,
                 includeBalanceSheet,
                 includeReconciliation,
-                commandTimeout),
+                commandTimeout,
+                categoryVersionId),
             ImmutableArray<StatementContractViolation>.Empty);
     }
 
@@ -118,5 +120,26 @@ public static class CashStatementRequestParser
             "params.commandTimeout",
             "Command timeout must be an integer from 1 through 600 seconds."));
         return 30;
+    }
+
+    private static string? ParseCategoryVersionId(
+        IReadOnlyDictionary<string, string> values,
+        ImmutableArray<StatementContractViolation>.Builder violations)
+    {
+        if (!values.TryGetValue("categoryVersionId", out var raw)
+            || string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var value = raw.Trim().ToUpperInvariant();
+        if (value.Length == 10
+            && value.StartsWith("CV", StringComparison.Ordinal)
+            && value.AsSpan(2).IndexOfAnyExceptInRange('0', '9') < 0)
+            return value;
+
+        violations.Add(new(
+            "OPTION_CATEGORY_VERSION_INVALID",
+            "params.categoryVersionId",
+            "Category Tree version must use the system CV00000000 identifier format."));
+        return null;
     }
 }

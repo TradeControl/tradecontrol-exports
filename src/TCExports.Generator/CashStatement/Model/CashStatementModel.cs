@@ -14,7 +14,8 @@ public sealed record CashStatementRequestV1(
     bool IncludeBankBalances = true,
     bool IncludeBalanceSheet = true,
     bool IncludeReconciliation = false,
-    int CommandTimeoutSeconds = 30)
+    int CommandTimeoutSeconds = 30,
+    string? CategoryVersionId = null)
 {
     public const int ContractVersion = 1;
 
@@ -336,6 +337,26 @@ public sealed record CashStatementMetadata(
     StatementPeriodId ActivePeriod,
     string DateLabel = "Date:");
 
+public sealed record CashStatementCategoryTreeVersion(
+    string VersionId,
+    string Description,
+    short StatusCode,
+    string Status,
+    DateTimeOffset EffectiveFromOn,
+    DateTimeOffset? EffectiveToOn,
+    DateTimeOffset ContentChangedOn,
+    string? CanonicalSha256,
+    long? CanonicalByteLength);
+
+public sealed record CashStatementCategoryTreeContext(
+    CashStatementCategoryTreeVersion ActiveVersion,
+    CashStatementCategoryTreeVersion SelectedVersion)
+{
+    public bool IsActiveSelection =>
+        string.Equals(ActiveVersion.VersionId, SelectedVersion.VersionId,
+            StringComparison.OrdinalIgnoreCase);
+}
+
 /// <summary>
 /// Immutable renderer-neutral Cash Statement. Sheets are already ordered for presentation;
 /// formula evaluation order is derived independently from semantic dependencies.
@@ -344,4 +365,5 @@ public sealed record CashStatementDocument(
     CashStatementMetadata Metadata,
     CashStatementRequestV1 Request,
     StatementPeriodGrid PeriodGrid,
-    ImmutableArray<StatementSheet> Sheets);
+    ImmutableArray<StatementSheet> Sheets,
+    CashStatementCategoryTreeContext? CategoryTree = null);

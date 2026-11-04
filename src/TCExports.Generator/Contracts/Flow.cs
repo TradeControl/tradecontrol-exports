@@ -1,5 +1,20 @@
 ﻿namespace TCExports.Generator.Contracts;
 
+public sealed record CategoryTreeVersionDto(
+    string VersionId,
+    string Description,
+    short StatusCode,
+    string Status,
+    DateTime? EffectiveFromOn,
+    DateTime? EffectiveToOn,
+    DateTime ContentChangedOn,
+    string? CanonicalSha256,
+    long? CanonicalByteLength);
+
+public sealed record CategoryTreeVersionResolutionDto(
+    CategoryTreeVersionDto ActiveVersion,
+    CategoryTreeVersionDto? SelectedVersion);
+
 /// <summary>
 /// A cash flow category descriptor used to group cash codes in the statement.
 /// </summary>
@@ -19,6 +34,8 @@ public sealed class FlowCategoryCashCodeDto
     public string CashCode { get; init; } = "";
     public string CashDescription { get; init; } = "";
 }
+
+public sealed record UnmappedCashCodeDto(string CashCode, string CashDescription);
 
 /// <summary>
 /// A category flagged as a total/summary for a given cash type.

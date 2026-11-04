@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Data;
 using TCExports.Generator.Contracts;
 
@@ -6,174 +6,308 @@ namespace TCExports.Generator.Data;
 
 public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
 {
-    public async Task<IReadOnlyList<FlowCategoryDto>> GetCategoriesAsync(string connectionString, CashType cashType, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    private static SqlCommand StoredProcedure(
+        SqlConnection connection,
+        string procedure,
+        int commandTimeoutSeconds) => new(procedure, connection)
     {
-        const string sql = @"
-            SELECT CategoryCode, Category, CashPolarityCode, DisplayOrder
-            FROM Cash.fnFlowCategory(@CashTypeCode)
-            ORDER BY DisplayOrder, Category;";
+        CommandType = CommandType.StoredProcedure,
+        CommandTimeout = commandTimeoutSeconds
+    };
+
+    private static SqlCommand Query(
+        SqlConnection connection,
+        string sql,
+        int commandTimeoutSeconds) => new(sql, connection)
+    {
+        CommandType = CommandType.Text,
+        CommandTimeout = commandTimeoutSeconds
+    };
+
+    private static void AddVersionParameter(SqlCommand command, string categoryVersionId) =>
+        command.Parameters.Add(new SqlParameter("@CategoryVersionId", SqlDbType.NVarChar, 10)
+        {
+            Value = categoryVersionId
+        });
+
+
+    public async Task<CategoryTreeVersionResolutionDto> ResolveCategoryTreeVersionAsync(
+        string connectionString,
+        string? categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
+        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT * FROM Cash.fnCategoryVersionResolve(@CategoryVersionId);",
+            commandTimeoutSeconds);
+        command.Parameters.Add(new SqlParameter("@CategoryVersionId", SqlDbType.NVarChar, 10)
+        {
+            Value = string.IsNullOrWhiteSpace(categoryVersionId) ? DBNull.Value : categoryVersionId.Trim()
+        });
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, ct);
+        if (!await reader.ReadAsync(ct))
+            throw new InvalidOperationException("The active Category Tree version could not be resolved.");
+
+        var active = ReadVersion(reader, "Active");
+        var selected = reader.IsDBNull(reader.GetOrdinal("SelectedVersionId")) ? null : ReadVersion(reader, "Selected");
+        return new(active, selected);
+
+        static CategoryTreeVersionDto ReadVersion(SqlDataReader reader, string prefix) => new(
+            reader.GetString(reader.GetOrdinal($"{prefix}VersionId")),
+            reader.GetString(reader.GetOrdinal($"{prefix}Description")),
+            reader.GetInt16(reader.GetOrdinal($"{prefix}StatusCode")),
+            reader.GetString(reader.GetOrdinal($"{prefix}Status")),
+            reader.IsDBNull(reader.GetOrdinal($"{prefix}EffectiveFromOn")) ? null : reader.GetDateTime(reader.GetOrdinal($"{prefix}EffectiveFromOn")),
+            reader.IsDBNull(reader.GetOrdinal($"{prefix}EffectiveToOn")) ? null : reader.GetDateTime(reader.GetOrdinal($"{prefix}EffectiveToOn")),
+            reader.GetDateTime(reader.GetOrdinal($"{prefix}ContentChangedOn")),
+            reader.IsDBNull(reader.GetOrdinal($"{prefix}CanonicalSha256")) ? null : reader.GetString(reader.GetOrdinal($"{prefix}CanonicalSha256")),
+            reader.IsDBNull(reader.GetOrdinal($"{prefix}CanonicalByteLength")) ? null : reader.GetInt64(reader.GetOrdinal($"{prefix}CanonicalByteLength")));
+    }
+
+    public async Task<IReadOnlyList<string>> GetCategoryTreeProjectionMismatchesAsync(
+        string connectionString,
+        string categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
+        var list = new List<string>();
+        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT Dependency FROM Cash.fnCategoryVersionProjectionMismatches(@CategoryVersionId) ORDER BY Dependency;",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            list.Add(reader.GetString(0));
+        return list;
+    }
+
+    public async Task<IReadOnlyList<FlowCategoryDto>> GetCategoriesAsync(
+        string connectionString,
+        string categoryVersionId,
+        CashType cashType,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
         var list = new List<FlowCategoryDto>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        cmd.Parameters.Add(new SqlParameter("@CashTypeCode", SqlDbType.SmallInt) { Value = (short)cashType });
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT CategoryCode, Category, CashPolarityCode, DisplayOrder FROM Cash.fnFlowCategoryByVersion(@CategoryVersionId, @CashTypeCode) ORDER BY DisplayOrder, Category;",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        command.Parameters.Add(new SqlParameter("@CashTypeCode", SqlDbType.SmallInt) { Value = (short)cashType });
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
         {
             list.Add(new FlowCategoryDto
             {
-                CategoryCode = rdr.GetString(rdr.GetOrdinal("CategoryCode")),
-                Category = rdr.GetString(rdr.GetOrdinal("Category")),
-                CashPolarityCode = rdr.IsDBNull(rdr.GetOrdinal("CashPolarityCode")) ? (short?)null : rdr.GetInt16(rdr.GetOrdinal("CashPolarityCode")),
-                DisplayOrder = rdr.IsDBNull(rdr.GetOrdinal("DisplayOrder")) ? (short?)null : rdr.GetInt16(rdr.GetOrdinal("DisplayOrder"))
+                CategoryCode = reader.GetString(reader.GetOrdinal("CategoryCode")),
+                Category = reader.GetString(reader.GetOrdinal("Category")),
+                CashPolarityCode = reader.IsDBNull(reader.GetOrdinal("CashPolarityCode")) ? null : reader.GetInt16(reader.GetOrdinal("CashPolarityCode")),
+                DisplayOrder = reader.IsDBNull(reader.GetOrdinal("DisplayOrder")) ? null : reader.GetInt16(reader.GetOrdinal("DisplayOrder"))
             });
         }
         return list;
     }
 
-    public async Task<string> GetCompanyNameAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public async Task<IReadOnlyList<FlowCategoryCashCodeDto>> GetCashCodesAsync(
+        string connectionString,
+        string categoryVersionId,
+        string categoryCode,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
     {
-        const string sql = @"SELECT TOP (1) SubjectName FROM App.vwHomeAccount;";
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        var result = await cmd.ExecuteScalarAsync(ct);
-        return result as string ?? string.Empty;
-    }
-
-    public async Task<IReadOnlyList<FlowCategoryCashCodeDto>> GetCashCodesAsync(string connectionString, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        const string sql = @"
-            SELECT CashCode, CashDescription
-            FROM Cash.fnFlowCategoryCashCodes(@CategoryCode)
-            ORDER BY CashDescription;";
         var list = new List<FlowCategoryCashCodeDto>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        cmd.Parameters.Add(new SqlParameter("@CategoryCode", SqlDbType.NVarChar, 10) { Value = categoryCode });
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT CashCode, CashDescription FROM Cash.fnFlowCategoryCashCodesByVersion(@CategoryVersionId, @CategoryCode) ORDER BY CashDescription;",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        command.Parameters.Add(new SqlParameter("@CategoryCode", SqlDbType.NVarChar, 10) { Value = categoryCode });
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
             list.Add(new FlowCategoryCashCodeDto
             {
-                CashCode = rdr.GetString(rdr.GetOrdinal("CashCode")),
-                CashDescription = rdr.GetString(rdr.GetOrdinal("CashDescription"))
+                CashCode = reader.GetString(reader.GetOrdinal("CashCode")),
+                CashDescription = reader.GetString(reader.GetOrdinal("CashDescription"))
             });
-        }
         return list;
     }
 
-    public async Task<IReadOnlyList<FlowCategoriesByTypeDto>> GetCategoriesByTypeAsync(string connectionString, CashType cashType, CategoryType categoryType, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public async Task<IReadOnlyList<UnmappedCashCodeDto>> GetUnmappedTransactionCashCodesAsync(
+        string connectionString,
+        string categoryVersionId,
+        short fromYearNumber,
+        short toYearNumber,
+        bool includeOrderBook,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
     {
-        const string sql = @"
-            SELECT CategoryCode, Category, CashType
-            FROM Cash.fnFlowCategoriesByType(@CashTypeCode, @CategoryTypeCode)
-            ORDER BY DisplayOrder, Category;";
+        var list = new List<UnmappedCashCodeDto>();
+        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT CashCode, CashDescription FROM Cash.fnCategoryVersionUnmappedCashCodes(@CategoryVersionId, @FromYearNumber, @ToYearNumber, @IncludeOrderBook) ORDER BY CashCode;",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        command.Parameters.Add(new SqlParameter("@FromYearNumber", SqlDbType.SmallInt) { Value = fromYearNumber });
+        command.Parameters.Add(new SqlParameter("@ToYearNumber", SqlDbType.SmallInt) { Value = toYearNumber });
+        command.Parameters.Add(new SqlParameter("@IncludeOrderBook", SqlDbType.Bit) { Value = includeOrderBook });
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            list.Add(new(reader.GetString(0), reader.GetString(1)));
+        return list;
+    }
+
+    public async Task<IReadOnlyList<FlowCategoriesByTypeDto>> GetCategoriesByTypeAsync(
+        string connectionString,
+        string categoryVersionId,
+        CashType cashType,
+        CategoryType categoryType,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
         var list = new List<FlowCategoriesByTypeDto>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        cmd.Parameters.Add(new SqlParameter("@CashTypeCode", SqlDbType.SmallInt) { Value = (short)cashType });
-        cmd.Parameters.Add(new SqlParameter("@CategoryTypeCode", SqlDbType.SmallInt) { Value = (short)categoryType });
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT CategoryCode, Category, CashType FROM Cash.fnFlowCategoriesByTypeByVersion(@CategoryVersionId, @CashTypeCode, @CategoryTypeCode) ORDER BY DisplayOrder, Category;",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        command.Parameters.Add(new SqlParameter("@CashTypeCode", SqlDbType.SmallInt) { Value = (short)cashType });
+        command.Parameters.Add(new SqlParameter("@CategoryTypeCode", SqlDbType.SmallInt) { Value = (short)categoryType });
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
             list.Add(new FlowCategoriesByTypeDto
             {
-                CategoryCode = rdr.GetString(rdr.GetOrdinal("CategoryCode")),
-                Category = rdr.GetString(rdr.GetOrdinal("Category")),
-                CashType = rdr.IsDBNull(rdr.GetOrdinal("CashType")) ? "" : rdr.GetString(rdr.GetOrdinal("CashType"))
+                CategoryCode = reader.GetString(reader.GetOrdinal("CategoryCode")),
+                Category = reader.GetString(reader.GetOrdinal("Category")),
+                CashType = reader.IsDBNull(reader.GetOrdinal("CashType")) ? string.Empty : reader.GetString(reader.GetOrdinal("CashType"))
             });
-        }
         return list;
     }
 
-    public async Task<IReadOnlyList<CategoryTotalDto>> GetCategoryTotalsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CategoryTotalDto>> GetCategoryTotalsAsync(
+        string connectionString,
+        string categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
     {
-        const string sql = @"SELECT CategoryCode FROM Cash.vwCategoryTotals ORDER BY DisplayOrder, Category;";
         var list = new List<CategoryTotalDto>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-            list.Add(new CategoryTotalDto { CategoryCode = rdr.GetString(0) });
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT CategoryCode FROM Cash.fnFlowCategoryTotalsByVersion(@CategoryVersionId) ORDER BY DisplayOrder, Category;",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            list.Add(new CategoryTotalDto { CategoryCode = reader.GetString(0) });
         return list;
     }
 
-    public async Task<IReadOnlyList<string>> GetCategoryTotalCodesAsync(string connectionString, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public async Task<IReadOnlyList<string>> GetCategoryTotalCodesAsync(
+        string connectionString,
+        string categoryVersionId,
+        string categoryCode,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
     {
-        const string sql = @"SELECT CategoryCode FROM Cash.fnFlowCategoryTotalCodes(@CategoryCode) ORDER BY CategoryCode;";
         var list = new List<string>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        cmd.Parameters.Add(new SqlParameter("@CategoryCode", SqlDbType.NVarChar, 10) { Value = categoryCode });
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-            list.Add(rdr.GetString(0));
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT CategoryCode FROM Cash.fnFlowCategoryTotalCodesByVersion(@CategoryVersionId, @CategoryCode) ORDER BY DisplayOrder, CategoryCode;",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        command.Parameters.Add(new SqlParameter("@CategoryCode", SqlDbType.NVarChar, 10) { Value = categoryCode });
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            list.Add(reader.GetString(0));
         return list;
     }
 
-    public async Task<IReadOnlyList<CategoryExpressionDto>> GetCategoryExpressionsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CategoryExpressionDto>> GetCategoryExpressionsAsync(
+        string connectionString,
+        string categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
     {
-        const string sql = @"
-            SELECT DisplayOrder, CategoryCode, Category, Expression,
-	            CASE COALESCE(ce.Template, '') 
-		            WHEN '' THEN ce.Format
-		            ELSE ce.Template
-	            END Format
-            FROM Cash.vwCategoryExpressions ce
-            WHERE SyntaxTypeCode IN (0, 2)
-            ORDER BY DisplayOrder, Category;";
         var list = new List<CategoryExpressionDto>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT DisplayOrder, CategoryCode, Category, Expression, Format FROM Cash.fnCategoryExpressionsByVersion(@CategoryVersionId) ORDER BY DisplayOrder, Category;",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
             list.Add(new CategoryExpressionDto
             {
-                DisplayOrder = rdr.GetInt16(rdr.GetOrdinal("DisplayOrder")),
-                CategoryCode = rdr.GetString(rdr.GetOrdinal("CategoryCode")),
-                Category = rdr.GetString(rdr.GetOrdinal("Category")),
-                Expression = rdr.GetString(rdr.GetOrdinal("Expression")),
-                Format = rdr.GetString(rdr.GetOrdinal("Format"))
+                DisplayOrder = reader.GetInt16(reader.GetOrdinal("DisplayOrder")),
+                CategoryCode = reader.GetString(reader.GetOrdinal("CategoryCode")),
+                Category = reader.GetString(reader.GetOrdinal("Category")),
+                Expression = reader.GetString(reader.GetOrdinal("Expression")),
+                Format = reader.GetString(reader.GetOrdinal("Format"))
             });
-        }
         return list;
     }
 
-    public async Task<string> GetCategoryCodeFromNameAsync(string connectionString, string categoryName, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    public async Task<string> GetCategoryCodeFromNameAsync(
+        string connectionString,
+        string categoryVersionId,
+        string categoryName,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
     {
-        const string sql = @"
-            SELECT CASE
-                WHEN EXISTS (SELECT 1 FROM Cash.tbCategory WHERE CategoryCode = @Token)
-                    THEN @Token
-                WHEN EXISTS (SELECT 1 FROM Cash.tbCode WHERE CashCode = @Token)
-                    THEN @Token
-                WHEN (SELECT COUNT(*) FROM Cash.tbCategory WHERE Category = @Token) = 1
-                    THEN (SELECT CategoryCode FROM Cash.tbCategory WHERE Category = @Token)
-                WHEN NOT EXISTS (SELECT 1 FROM Cash.tbCategory WHERE Category = @Token)
-                 AND (SELECT COUNT(*) FROM Cash.tbCode WHERE CashDescription = @Token) = 1
-                    THEN (SELECT CashCode FROM Cash.tbCode WHERE CashDescription = @Token)
-                ELSE N''
-            END;";
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        cmd.Parameters.Add(new SqlParameter("@Token", SqlDbType.NVarChar, 100) { Value = categoryName.Trim() });
-        return await cmd.ExecuteScalarAsync(ct) as string ?? string.Empty;
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT Cash.fnCategoryCodeResolveByVersion(@CategoryVersionId, @Token);",
+            commandTimeoutSeconds);
+        AddVersionParameter(command, categoryVersionId);
+        command.Parameters.Add(new SqlParameter("@Token", SqlDbType.NVarChar, 100) { Value = categoryName.Trim() });
+        return await command.ExecuteScalarAsync(ct) as string ?? string.Empty;
+    }
+
+    public async Task<string> GetCompanyNameAsync(
+        string connectionString,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
+        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
+        await using var connection = new SqlConnection(ado);
+        await connection.OpenAsync(ct);
+        await using var command = Query(
+            connection,
+            "SELECT TOP (1) SubjectName FROM App.vwHomeAccount;",
+            commandTimeoutSeconds);
+        return await command.ExecuteScalarAsync(ct) as string ?? string.Empty;
     }
 
     public async Task SetCategoryExpressionStatusAsync(
@@ -189,13 +323,10 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
         await using var conn = new SqlConnection(ado);
         await conn.OpenAsync(ct);
 
-        await using (var stateCommand = new SqlCommand(
+        await using (var stateCommand = Query(
+            conn,
             "SELECT CONVERT(nvarchar(20), DATABASEPROPERTYEX(DB_NAME(), 'Updateability'));",
-            conn)
-        {
-            CommandType = CommandType.Text,
-            CommandTimeout = commandTimeoutSeconds
-        })
+            commandTimeoutSeconds))
         {
             var updateability = await stateCommand.ExecuteScalarAsync(ct) as string;
             if (string.Equals(updateability, "READ_ONLY", StringComparison.OrdinalIgnoreCase))
@@ -216,245 +347,5 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
         });
 
         await cmd.ExecuteNonQueryAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<BankAccountDto>> GetBankAccountsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        const string sql = @"
-            SELECT AccountCode, AccountName, OpeningBalance
-            FROM Cash.vwBankAccounts
-            ORDER BY DisplayOrder, AccountCode;";
-        var list = new List<BankAccountDto>();
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
-            list.Add(new BankAccountDto
-            {
-                AccountCode = rdr.GetString(rdr.GetOrdinal("AccountCode")),
-                AccountName = rdr.GetString(rdr.GetOrdinal("AccountName")),
-                OpeningBalance = rdr.GetDecimal(rdr.GetOrdinal("OpeningBalance"))
-            });
-        }
-        return list;
-    }
-
-    public async Task<IReadOnlyList<BankBalanceDto>> GetBankBalancesAsync(string connectionString, string accountCode, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        const string sql = @"
-            SELECT 
-                @AccountCode AS AccountCode,
-                YearNumber,
-                CAST(MONTH(StartOn) AS tinyint) AS MonthNumber,
-                CAST(Balance AS decimal(18,5)) AS Balance
-            FROM Cash.fnFlowBankBalances(@AccountCode)
-            ORDER BY YearNumber, StartOn;";
-        var list = new List<BankBalanceDto>();
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        cmd.Parameters.Add(new SqlParameter("@AccountCode", SqlDbType.NVarChar, 10) { Value = accountCode });
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
-            list.Add(new BankBalanceDto
-            {
-                AccountCode = rdr.GetString(rdr.GetOrdinal("AccountCode")),
-                YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
-                MonthNumber = rdr.GetByte(rdr.GetOrdinal("MonthNumber")),
-                Balance = rdr.GetDecimal(rdr.GetOrdinal("Balance"))
-            });
-        }
-        return list;
-    }
-
-    public async Task<string> GetVatRecurrenceTypeAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        // Matches legacy DataContext.VatRecurrenceType (TaxType.Vat == TaxType.Vat)
-        const string sql = @"
-            SELECT TOP (1) UPPER(Recurrence) 
-            FROM Cash.vwFlowTaxType 
-            WHERE TaxTypeCode = 1;";
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        var result = await cmd.ExecuteScalarAsync(ct);
-        return result as string ?? string.Empty;
-    }
-
-    public async Task<IReadOnlyList<VatRecurrenceDto>> GetVatRecurrenceAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        const string sql = @"
-            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
-                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
-                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
-                   totalValueGoodsReceivedExVAT
-            FROM Cash.vwFlowVatRecurrence
-            ORDER BY YearNumber, StartOn;";
-        var list = new List<VatRecurrenceDto>();
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
-            list.Add(new VatRecurrenceDto
-            {
-                YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
-                StartOn = rdr.GetDateTime(rdr.GetOrdinal("StartOn")),
-                VatDueSales = rdr.GetDecimal(rdr.GetOrdinal("vatDueSales")),
-                VatDueAcquisitions = rdr.GetDecimal(rdr.GetOrdinal("vatDueAcquisitions")),
-                TotalVatDue = rdr.GetDecimal(rdr.GetOrdinal("totalVatDue")),
-                VatReclaimedCurrPeriod = rdr.GetDecimal(rdr.GetOrdinal("vatReclaimedCurrPeriod")),
-                NetVatDue = rdr.GetDecimal(rdr.GetOrdinal("netVatDue")),
-                TotalValueSalesExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueSalesExVAT")),
-                TotalValuePurchasesExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValuePurchasesExVAT")),
-                TotalValueGoodsSuppliedExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")),
-                TotalValueGoodsReceivedExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsReceivedExVAT"))
-            });
-        }
-        return list;
-    }
-
-    public async Task<IReadOnlyList<VatRecurrenceAccrualDto>> GetVatRecurrenceAccrualsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        const string sql = @"
-            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
-                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
-                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
-                   totalValueGoodsReceivedExVAT
-            FROM Cash.vwFlowVatRecurrenceAccruals
-            ORDER BY YearNumber, StartOn;";
-        var list = new List<VatRecurrenceAccrualDto>();
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
-            list.Add(new VatRecurrenceAccrualDto
-            {
-                YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
-                StartOn = rdr.GetDateTime(rdr.GetOrdinal("StartOn")),
-                VatDueSales = rdr.IsDBNull(rdr.GetOrdinal("vatDueSales")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatDueSales")),
-                VatDueAcquisitions = rdr.IsDBNull(rdr.GetOrdinal("vatDueAcquisitions")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatDueAcquisitions")),
-                TotalVatDue = rdr.IsDBNull(rdr.GetOrdinal("totalVatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalVatDue")),
-                VatReclaimedCurrPeriod = rdr.IsDBNull(rdr.GetOrdinal("vatReclaimedCurrPeriod")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatReclaimedCurrPeriod")),
-                NetVatDue = rdr.IsDBNull(rdr.GetOrdinal("netVatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("netVatDue")),
-                TotalValueSalesExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueSalesExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueSalesExVAT")),
-                TotalValuePurchasesExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValuePurchasesExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValuePurchasesExVAT")),
-                TotalValueGoodsSuppliedExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")),
-                TotalValueGoodsReceivedExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueGoodsReceivedExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsReceivedExVAT"))
-            });
-        }
-        return list;
-    }
-
-    public async Task<IReadOnlyList<VatPeriodTotalDto>> GetVatPeriodTotalsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        const string sql = @"
-            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
-                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
-                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
-                   totalValueGoodsReceivedExVAT
-            FROM Cash.vwFlowVatPeriodTotals
-            ORDER BY YearNumber, StartOn;";
-        var list = new List<VatPeriodTotalDto>();
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
-            list.Add(new VatPeriodTotalDto
-            {
-                YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
-                StartOn = rdr.GetDateTime(rdr.GetOrdinal("StartOn")),
-                VatDueSales = rdr.GetDecimal(rdr.GetOrdinal("vatDueSales")),
-                VatDueAcquisitions = rdr.GetDecimal(rdr.GetOrdinal("vatDueAcquisitions")),
-                TotalVatDue = rdr.GetDecimal(rdr.GetOrdinal("totalVatDue")),
-                VatReclaimedCurrPeriod = rdr.GetDecimal(rdr.GetOrdinal("vatReclaimedCurrPeriod")),
-                NetVatDue = rdr.GetDecimal(rdr.GetOrdinal("netVatDue")),
-                TotalValueSalesExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueSalesExVAT")),
-                TotalValuePurchasesExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValuePurchasesExVAT")),
-                TotalValueGoodsSuppliedExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")),
-                TotalValueGoodsReceivedExVAT = rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsReceivedExVAT"))
-            });
-        }
-        return list;
-    }
-
-    public async Task<IReadOnlyList<VatPeriodAccrualDto>> GetVatPeriodAccrualsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        const string sql = @"
-            SELECT YearNumber, StartOn, vatDueSales, vatDueAcquisitions, totalVatDue,
-                   vatReclaimedCurrPeriod, netVatDue, totalValueSalesExVAT,
-                   totalValuePurchasesExVAT, totalValueGoodsSuppliedExVAT,
-                   totalValueGoodsReceivedExVAT
-            FROM Cash.vwFlowVatPeriodAccruals
-            ORDER BY YearNumber, StartOn;";
-        var list = new List<VatPeriodAccrualDto>();
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
-            list.Add(new VatPeriodAccrualDto
-            {
-                YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
-                StartOn = rdr.GetDateTime(rdr.GetOrdinal("StartOn")),
-                VatDueSales = rdr.IsDBNull(rdr.GetOrdinal("vatDueSales")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatDueSales")),
-                VatDueAcquisitions = rdr.IsDBNull(rdr.GetOrdinal("vatDueAcquisitions")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatDueAcquisitions")),
-                TotalVatDue = rdr.IsDBNull(rdr.GetOrdinal("totalVatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalVatDue")),
-                VatReclaimedCurrPeriod = rdr.IsDBNull(rdr.GetOrdinal("vatReclaimedCurrPeriod")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("vatReclaimedCurrPeriod")),
-                NetVatDue = rdr.IsDBNull(rdr.GetOrdinal("netVatDue")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("netVatDue")),
-                TotalValueSalesExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueSalesExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueSalesExVAT")),
-                TotalValuePurchasesExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValuePurchasesExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValuePurchasesExVAT")),
-                TotalValueGoodsSuppliedExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsSuppliedExVAT")),
-                TotalValueGoodsReceivedExVAT = rdr.IsDBNull(rdr.GetOrdinal("totalValueGoodsReceivedExVAT")) ? (decimal?)null : rdr.GetDecimal(rdr.GetOrdinal("totalValueGoodsReceivedExVAT"))
-            });
-        }
-        return list;
-    }
-
-    public async Task<IReadOnlyList<BalanceSheetEntryDto>> GetBalanceSheetAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        const string sql = @"
-            SELECT 
-                AssetCode,
-                AssetName,
-                YearNumber,
-                CAST(MONTH(StartOn) AS tinyint) AS MonthNumber,
-                CAST(Balance AS decimal(18,5)) AS Balance
-            FROM Cash.vwBalanceSheet
-            ORDER BY EntryNumber;";
-        var list = new List<BalanceSheetEntryDto>();
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var conn = new SqlConnection(ado);
-        await conn.OpenAsync(ct);
-        await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text, CommandTimeout = commandTimeoutSeconds };
-        await using var rdr = await cmd.ExecuteReaderAsync(ct);
-        while (await rdr.ReadAsync(ct))
-        {
-            list.Add(new BalanceSheetEntryDto
-            {
-                AssetCode = rdr.GetString(rdr.GetOrdinal("AssetCode")),
-                AssetName = rdr.GetString(rdr.GetOrdinal("AssetName")),
-                YearNumber = rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
-                MonthNumber = rdr.GetByte(rdr.GetOrdinal("MonthNumber")),
-                Balance = rdr.GetDecimal(rdr.GetOrdinal("Balance"))
-            });
-        }
-        return list;
     }
 }

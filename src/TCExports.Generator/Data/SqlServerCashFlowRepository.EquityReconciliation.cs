@@ -1,5 +1,4 @@
 using Microsoft.Data.SqlClient;
-using System.Data;
 using TCExports.Generator.Contracts;
 
 namespace TCExports.Generator.Data;
@@ -17,28 +16,16 @@ public sealed partial class SqlServerCashFlowRepository
         await using var conn = new SqlConnection(adoConnString);
         await conn.OpenAsync(ct);
 
-        const string sql = """
-            SELECT
-                YearNumber,
-                [Description],
-                OpeningCapital,
-                ClosingCapital,
-                Profit,
-                BusinessTax,
-                ProfitAfterTax,
-                CapitalMovement,
-                OpeningSubjectPosition,
-                OpeningAccountPosition,
-                CapitalDelta,
-                Variance
+        await using var cmd = Query(
+            conn,
+            """
+            SELECT YearNumber, Description, OpeningCapital, ClosingCapital, Profit,
+                   BusinessTax, ProfitAfterTax, CapitalMovement,
+                   OpeningSubjectPosition, OpeningAccountPosition, CapitalDelta, Variance
             FROM Cash.vwEquityReconciliationByYear
             ORDER BY YearNumber;
-            """;
-
-        await using var cmd = new SqlCommand(sql, conn) {
-            CommandType = CommandType.Text,
-            CommandTimeout = commandTimeoutSeconds
-        };
+            """,
+            commandTimeoutSeconds);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))

@@ -53,6 +53,23 @@ public sealed class CashStatementBuilder
         ct.ThrowIfCancellationRequested();
 
         var timeout = request.CommandTimeoutSeconds;
+        var categoryTreeResult = await ResolveCategoryTreeContextAsync(
+            connectionString,
+            request,
+            timeout,
+            ct);
+        if (!categoryTreeResult.IsSuccess)
+            return new(null, categoryTreeResult.Violations);
+
+        var projectionResult = await ValidateCategoryTreeProjectionEquivalenceAsync(
+            connectionString,
+            categoryTreeResult.Value!,
+            request,
+            timeout,
+            ct);
+        if (!projectionResult.IsDefaultOrEmpty)
+            return new(null, projectionResult);
+
         var active = await _repository.GetActivePeriodAsync(connectionString, timeout, ct);
         var years = await _repository.GetActiveYearsAsync(connectionString, timeout, ct);
         var months = await _repository.GetMonthsAsync(connectionString, timeout, ct);
@@ -62,7 +79,23 @@ public sealed class CashStatementBuilder
         if (!periodResult.IsSuccess)
             return new(null, periodResult.Violations);
 
-        var sourceResult = await LoadFlowSourceAsync(connectionString, request, years, ct);
+        var mappingResult = await ValidateCategoryTreeCoverageAsync(
+            connectionString,
+            selectedVersionId: categoryTreeResult.Value!.SelectedVersion.VersionId,
+            years,
+            request,
+            timeout,
+            ct);
+        if (!mappingResult.IsDefaultOrEmpty)
+            return new(null, mappingResult);
+
+        var selectedVersionId = categoryTreeResult.Value!.SelectedVersion.VersionId;
+        var sourceResult = await LoadFlowSourceAsync(
+            connectionString,
+            selectedVersionId,
+            request,
+            years,
+            ct);
         if (!sourceResult.IsSuccess)
             return new(null, sourceResult.Violations);
 
@@ -72,6 +105,7 @@ public sealed class CashStatementBuilder
 
         var expressionSection = await BuildExpressionSectionAsync(
             connectionString,
+            selectedVersionId,
             periodGrid,
             sourceResult.Value!,
             sections,
@@ -146,7 +180,8 @@ public sealed class CashStatementBuilder
                 _text.Get(CashStatementText.Date)),
             request,
             periodGrid,
-            sheets.ToImmutable());
+            sheets.ToImmutable(),
+            categoryTreeResult.Value);
 
         buildViolations.AddRange(_validator.Validate(document, _limits));
         if (buildViolations.Count > 0)
@@ -159,8 +194,159 @@ public sealed class CashStatementBuilder
             : new(null, evaluatedViolations);
     }
 
+    private async Task<ImmutableArray<StatementContractViolation>> ValidateCategoryTreeCoverageAsync(
+        string connectionString,
+        string selectedVersionId,
+        IReadOnlyList<ActiveYearDto> years,
+        CashStatementRequestV1 request,
+        int commandTimeoutSeconds,
+        CancellationToken ct)
+    {
+        if (years.Count == 0)
+            return ImmutableArray<StatementContractViolation>.Empty;
+
+        var missing = await _repository.GetUnmappedTransactionCashCodesAsync(
+            connectionString,
+            selectedVersionId,
+            years.Min(year => year.YearNumber),
+            years.Max(year => year.YearNumber),
+            request.IncludeOrderBook,
+            commandTimeoutSeconds,
+            ct);
+        if (missing.Count == 0)
+            return ImmutableArray<StatementContractViolation>.Empty;
+
+        const int displayLimit = 20;
+        var codes = string.Join(", ", missing
+            .Take(displayLimit)
+            .Select(item => $"{item.CashCode} ({item.CashDescription})"));
+        var suffix = missing.Count > displayLimit
+            ? $" and {missing.Count - displayLimit} more"
+            : string.Empty;
+        return ImmutableArray.Create(new StatementContractViolation(
+            "CATEGORY_VERSION_CASH_CODE_UNMAPPED",
+            "params.categoryVersionId",
+            $"Category Tree version '{selectedVersionId}' does not classify transaction-bearing Cash Codes in the statement horizon: {codes}{suffix}."));
+    }
+
+    private async Task<CashStatementContractResult<CashStatementCategoryTreeContext>>
+        ResolveCategoryTreeContextAsync(
+            string connectionString,
+            CashStatementRequestV1 request,
+            int commandTimeoutSeconds,
+            CancellationToken ct)
+    {
+        var resolution = await _repository.ResolveCategoryTreeVersionAsync(
+            connectionString,
+            request.CategoryVersionId,
+            commandTimeoutSeconds,
+            ct);
+        if (resolution.SelectedVersion is null)
+        {
+            return Failure(
+                "CATEGORY_VERSION_NOT_FOUND",
+                $"Category Tree version '{request.CategoryVersionId}' was not found.");
+        }
+
+        var selected = resolution.SelectedVersion;
+        if (selected.StatusCode == 0)
+        {
+            return Failure(
+                "CATEGORY_VERSION_DRAFT",
+                "Draft Category Tree versions cannot be used for an ordinary Cash Statement.");
+        }
+        if (selected.StatusCode is < 1 or > 3)
+        {
+            return Failure(
+                "CATEGORY_VERSION_STATUS_INVALID",
+                "The selected Category Tree version is not eligible for Cash Statement generation.");
+        }
+
+        var active = MapVersion(resolution.ActiveVersion);
+        var selectedVersion = MapVersion(selected);
+        if (active is null || selectedVersion is null)
+        {
+            return Failure(
+                "CATEGORY_VERSION_INTERVAL_MISSING",
+                "The selected Category Tree version does not contain a valid effective interval.");
+        }
+
+        return new(new(active, selectedVersion),
+            ImmutableArray<StatementContractViolation>.Empty);
+
+        static CashStatementContractResult<CashStatementCategoryTreeContext> Failure(
+            string code,
+            string message) => new(
+                null,
+                ImmutableArray.Create(new StatementContractViolation(
+                    code,
+                    "params.categoryVersionId",
+                    message)));
+
+        static CashStatementCategoryTreeVersion? MapVersion(CategoryTreeVersionDto version)
+        {
+            if (!version.EffectiveFromOn.HasValue)
+                return null;
+
+            return new(
+                version.VersionId,
+                version.Description,
+                version.StatusCode,
+                version.Status,
+                Utc(version.EffectiveFromOn.Value),
+                version.EffectiveToOn.HasValue ? Utc(version.EffectiveToOn.Value) : null,
+                Utc(version.ContentChangedOn),
+                version.CanonicalSha256,
+                version.CanonicalByteLength);
+        }
+
+        static DateTimeOffset Utc(DateTime value) =>
+            new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+    }
+
+    private async Task<ImmutableArray<StatementContractViolation>>
+        ValidateCategoryTreeProjectionEquivalenceAsync(
+            string connectionString,
+            CashStatementCategoryTreeContext categoryTree,
+            CashStatementRequestV1 request,
+            int commandTimeoutSeconds,
+            CancellationToken ct)
+    {
+        if (categoryTree.IsActiveSelection)
+            return ImmutableArray<StatementContractViolation>.Empty;
+
+        var mismatches = await _repository.GetCategoryTreeProjectionMismatchesAsync(
+            connectionString,
+            categoryTree.SelectedVersion.VersionId,
+            commandTimeoutSeconds,
+            ct);
+        var required = mismatches.Where(dependency => dependency switch
+        {
+            "VAT_ROOT" => request.IncludeActivePeriods
+                || request.IncludeVatDetails
+                || request.IncludeBalanceSheet
+                || request.IncludeReconciliation,
+            "BIZ_ROOT" => request.IncludeActivePeriods
+                || request.IncludeTaxAccruals
+                || request.IncludeBalanceSheet
+                || request.IncludeReconciliation,
+            "OPEN_PROJECT_POLARITY" => request.IncludeTaxAccruals,
+            "ASSET_ACCOUNT_POLARITY" => request.IncludeBalanceSheet
+                || request.IncludeReconciliation,
+            _ => true
+        }).ToArray();
+        if (required.Length == 0)
+            return ImmutableArray<StatementContractViolation>.Empty;
+
+        return ImmutableArray.Create(new StatementContractViolation(
+            "CATEGORY_VERSION_OPTIONAL_PROJECTION_MISMATCH",
+            "params.categoryVersionId",
+            $"Category Tree version '{categoryTree.SelectedVersion.VersionId}' differs from the active tree in reporting dependencies used by this request: {string.Join(", ", required)}."));
+    }
+
     private async Task<CashStatementContractResult<FlowSource>> LoadFlowSourceAsync(
         string connectionString,
+        string categoryVersionId,
         CashStatementRequestV1 request,
         IReadOnlyList<ActiveYearDto> years,
         CancellationToken ct)
@@ -172,12 +358,18 @@ public sealed class CashStatementBuilder
         foreach (var cashType in new[] { CashType.Trade, CashType.Money, CashType.Tax })
         {
             ct.ThrowIfCancellationRequested();
-            var categoryDtos = await _repository.GetCategoriesAsync(connectionString, cashType, timeout, ct);
+            var categoryDtos = await _repository.GetCategoriesAsync(
+                connectionString,
+                categoryVersionId,
+                cashType,
+                timeout,
+                ct);
             foreach (var category in categoryDtos)
             {
                 ct.ThrowIfCancellationRequested();
                 var cashCodeDtos = await _repository.GetCashCodesAsync(
                     connectionString,
+                    categoryVersionId,
                     category.CategoryCode,
                     timeout,
                     ct);
@@ -236,6 +428,7 @@ public sealed class CashStatementBuilder
             ct.ThrowIfCancellationRequested();
             var totalDtos = await _repository.GetCategoriesByTypeAsync(
                 connectionString,
+                categoryVersionId,
                 cashType,
                 CategoryType.Total,
                 timeout,
@@ -249,12 +442,17 @@ public sealed class CashStatementBuilder
 
         var totalChildren = ImmutableDictionary.CreateBuilder<string, ImmutableArray<string>>(
             StringComparer.OrdinalIgnoreCase);
-        var totals = await _repository.GetCategoryTotalsAsync(connectionString, timeout, ct);
+        var totals = await _repository.GetCategoryTotalsAsync(
+            connectionString,
+            categoryVersionId,
+            timeout,
+            ct);
         foreach (var total in totals)
         {
             ct.ThrowIfCancellationRequested();
             var children = await _repository.GetCategoryTotalCodesAsync(
                 connectionString,
+                categoryVersionId,
                 total.CategoryCode,
                 timeout,
                 ct);
@@ -689,6 +887,7 @@ public sealed class CashStatementBuilder
 
     private async Task<StatementSection?> BuildExpressionSectionAsync(
         string connectionString,
+        string categoryVersionId,
         StatementPeriodGrid grid,
         FlowSource source,
         IEnumerable<StatementSection> flowSections,
@@ -698,6 +897,7 @@ public sealed class CashStatementBuilder
     {
         var expressions = await _repository.GetCategoryExpressionsAsync(
             connectionString,
+            categoryVersionId,
             commandTimeoutSeconds,
             ct);
         if (expressions.Count == 0)
@@ -733,6 +933,7 @@ public sealed class CashStatementBuilder
             {
                 expressionCode = await _repository.GetCategoryCodeFromNameAsync(
                     connectionString,
+                    categoryVersionId,
                     expression.Category,
                     commandTimeoutSeconds,
                     ct);
