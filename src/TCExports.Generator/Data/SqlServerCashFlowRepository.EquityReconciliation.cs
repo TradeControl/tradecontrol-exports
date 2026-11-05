@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using System.Data;
 using TCExports.Generator.Contracts;
 
 namespace TCExports.Generator.Data;
@@ -10,8 +11,6 @@ public sealed partial class SqlServerCashFlowRepository
         int commandTimeoutSeconds = 30,
         CancellationToken ct = default)
     {
-        var results = new List<EquityReconciliationByYearDto>();
-
         var adoConnString = ConnectionStringUtil.ToSqlClient(connectionString);
         await using var conn = new SqlConnection(adoConnString);
         await conn.OpenAsync(ct);
@@ -27,22 +26,75 @@ public sealed partial class SqlServerCashFlowRepository
             """,
             commandTimeoutSeconds);
 
+        return await ReadEquityReconciliationAsync(cmd, ct);
+    }
+
+    public async Task<IReadOnlyList<EquityReconciliationByYearDto>> GetEquityReconciliationByYearByVersionAsync(
+        string connectionString,
+        string categoryVersionId,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
+        var adoConnString = ConnectionStringUtil.ToSqlClient(connectionString);
+        await using var conn = new SqlConnection(adoConnString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = Query(
+            conn,
+            """
+            SELECT eb.YearNumber, eb.Description, eb.OpeningCapital, eb.ClosingCapital,
+                   eb.Profit, eb.BusinessTax, eb.ProfitAfterTax, eb.CapitalMovement,
+                   eb.OpeningSubjectPosition, eb.OpeningAccountPosition,
+                   eb.CapitalDelta, eb.Variance
+            FROM Cash.tbCategoryVersion AS cv
+            CROSS APPLY Cash.fnEquityReconciliationByYearByVersion(cv.VersionId) AS eb
+            WHERE cv.VersionId = @VersionId
+            ORDER BY eb.YearNumber;
+            """,
+            commandTimeoutSeconds);
+        cmd.Parameters.Add(new SqlParameter("@VersionId", SqlDbType.NVarChar, 10)
+        {
+            Value = categoryVersionId
+        });
+
+        return await ReadEquityReconciliationAsync(cmd, ct);
+    }
+
+    private static async Task<IReadOnlyList<EquityReconciliationByYearDto>> ReadEquityReconciliationAsync(
+        SqlCommand cmd,
+        CancellationToken ct)
+    {
+        var results = new List<EquityReconciliationByYearDto>();
+
         await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var yearNumberOrdinal = reader.GetOrdinal("YearNumber");
+        var descriptionOrdinal = reader.GetOrdinal("Description");
+        var openingCapitalOrdinal = reader.GetOrdinal("OpeningCapital");
+        var closingCapitalOrdinal = reader.GetOrdinal("ClosingCapital");
+        var profitOrdinal = reader.GetOrdinal("Profit");
+        var businessTaxOrdinal = reader.GetOrdinal("BusinessTax");
+        var profitAfterTaxOrdinal = reader.GetOrdinal("ProfitAfterTax");
+        var capitalMovementOrdinal = reader.GetOrdinal("CapitalMovement");
+        var openingSubjectPositionOrdinal = reader.GetOrdinal("OpeningSubjectPosition");
+        var openingAccountPositionOrdinal = reader.GetOrdinal("OpeningAccountPosition");
+        var capitalDeltaOrdinal = reader.GetOrdinal("CapitalDelta");
+        var varianceOrdinal = reader.GetOrdinal("Variance");
+
         while (await reader.ReadAsync(ct))
         {
             results.Add(new EquityReconciliationByYearDto {
-                YearNumber = reader.GetInt16(0),
-                Description = reader.IsDBNull(1) ? null : reader.GetString(1),
-                OpeningCapital = reader.GetDecimal(2),
-                ClosingCapital = reader.GetDecimal(3),
-                Profit = reader.GetDecimal(4),
-                BusinessTax = reader.GetDecimal(5),
-                ProfitAfterTax = reader.GetDecimal(6),
-                CapitalMovement = reader.GetDecimal(7),
-                OpeningSubjectPosition = reader.GetDecimal(8),
-                OpeningAccountPosition = reader.GetDecimal(9),
-                CapitalDelta = reader.GetDecimal(10),
-                Variance = reader.GetDecimal(11)
+                YearNumber = reader.GetInt16(yearNumberOrdinal),
+                Description = reader.IsDBNull(descriptionOrdinal) ? null : reader.GetString(descriptionOrdinal),
+                OpeningCapital = reader.GetDecimal(openingCapitalOrdinal),
+                ClosingCapital = reader.GetDecimal(closingCapitalOrdinal),
+                Profit = reader.GetDecimal(profitOrdinal),
+                BusinessTax = reader.GetDecimal(businessTaxOrdinal),
+                ProfitAfterTax = reader.GetDecimal(profitAfterTaxOrdinal),
+                CapitalMovement = reader.GetDecimal(capitalMovementOrdinal),
+                OpeningSubjectPosition = reader.GetDecimal(openingSubjectPositionOrdinal),
+                OpeningAccountPosition = reader.GetDecimal(openingAccountPositionOrdinal),
+                CapitalDelta = reader.GetDecimal(capitalDeltaOrdinal),
+                Variance = reader.GetDecimal(varianceOrdinal)
             });
         }
 

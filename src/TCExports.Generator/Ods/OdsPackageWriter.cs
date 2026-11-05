@@ -261,6 +261,7 @@ public sealed class OdsPackageWriter
             StatementPresentationRole.DocumentTitle => "Title",
             StatementPresentationRole.Metadata => "Metadata",
             StatementPresentationRole.ColumnHeader => "ColumnHeader",
+            StatementPresentationRole.PeriodVersionWarning => "PeriodVersionWarning",
             StatementPresentationRole.SectionHeader => "SectionHeader",
             StatementPresentationRole.SummaryHeader => "SummaryHeader",
             StatementPresentationRole.CalculatedTotalHeader => "CalculatedHeader",
@@ -308,6 +309,7 @@ public sealed class OdsPackageWriter
         StatementPresentationRole.ExpenseTotal or
         StatementPresentationRole.IncomeTotal or
         StatementPresentationRole.NeutralTotal or
+        StatementPresentationRole.PeriodVersionWarning or
         StatementPresentationRole.SummaryHeader or
         StatementPresentationRole.CalculatedTotalHeader or
         StatementPresentationRole.AnalysisHeader or
@@ -418,6 +420,7 @@ public sealed class OdsPackageWriter
             StyleElement("Percent", "P2", paragraphEnd: true),
             StyleElement("Ratio", "N2", paragraphEnd: true),
             StyleElement("ColumnHeader", bold: true, fontSize: "8pt"),
+            StyleElement("PeriodVersionWarning", background: "#fce4d6", bold: true, fontSize: "8pt"),
             StyleElement("SectionHeader", bold: true),
             StyleElement("SummaryHeader", background: "#90ee90", bold: true),
             StyleElement("CalculatedHeader", background: "#adff2f", bold: true),

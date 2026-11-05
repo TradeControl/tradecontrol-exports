@@ -68,24 +68,29 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
             reader.IsDBNull(reader.GetOrdinal($"{prefix}CanonicalByteLength")) ? null : reader.GetInt64(reader.GetOrdinal($"{prefix}CanonicalByteLength")));
     }
 
-    public async Task<IReadOnlyList<string>> GetCategoryTreeProjectionMismatchesAsync(
+    public async Task<IReadOnlyList<CategoryTreeVersionIntervalDto>> GetCategoryTreeVersionTimelineAsync(
         string connectionString,
-        string categoryVersionId,
         int commandTimeoutSeconds = 30,
         CancellationToken ct = default)
     {
-        var list = new List<string>();
+        var list = new List<CategoryTreeVersionIntervalDto>();
         var ado = ConnectionStringUtil.ToSqlClient(connectionString);
         await using var connection = new SqlConnection(ado);
         await connection.OpenAsync(ct);
         await using var command = Query(
             connection,
-            "SELECT Dependency FROM Cash.fnCategoryVersionProjectionMismatches(@CategoryVersionId) ORDER BY Dependency;",
+            "SELECT VersionId, EffectiveFromOn, EffectiveToOn FROM Cash.fnCategoryVersionTimeline() ORDER BY EffectiveFromOn, VersionId;",
             commandTimeoutSeconds);
-        AddVersionParameter(command, categoryVersionId);
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
-            list.Add(reader.GetString(0));
+        {
+            list.Add(new(
+                reader.GetString(reader.GetOrdinal("VersionId")),
+                DateOnly.FromDateTime(reader.GetDateTime(reader.GetOrdinal("EffectiveFromOn"))),
+                reader.IsDBNull(reader.GetOrdinal("EffectiveToOn"))
+                    ? null
+                    : DateOnly.FromDateTime(reader.GetDateTime(reader.GetOrdinal("EffectiveToOn")))));
+        }
         return list;
     }
 
@@ -144,33 +149,6 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
                 CashCode = reader.GetString(reader.GetOrdinal("CashCode")),
                 CashDescription = reader.GetString(reader.GetOrdinal("CashDescription"))
             });
-        return list;
-    }
-
-    public async Task<IReadOnlyList<UnmappedCashCodeDto>> GetUnmappedTransactionCashCodesAsync(
-        string connectionString,
-        string categoryVersionId,
-        short fromYearNumber,
-        short toYearNumber,
-        bool includeOrderBook,
-        int commandTimeoutSeconds = 30,
-        CancellationToken ct = default)
-    {
-        var list = new List<UnmappedCashCodeDto>();
-        var ado = ConnectionStringUtil.ToSqlClient(connectionString);
-        await using var connection = new SqlConnection(ado);
-        await connection.OpenAsync(ct);
-        await using var command = Query(
-            connection,
-            "SELECT CashCode, CashDescription FROM Cash.fnCategoryVersionUnmappedCashCodes(@CategoryVersionId, @FromYearNumber, @ToYearNumber, @IncludeOrderBook) ORDER BY CashCode;",
-            commandTimeoutSeconds);
-        AddVersionParameter(command, categoryVersionId);
-        command.Parameters.Add(new SqlParameter("@FromYearNumber", SqlDbType.SmallInt) { Value = fromYearNumber });
-        command.Parameters.Add(new SqlParameter("@ToYearNumber", SqlDbType.SmallInt) { Value = toYearNumber });
-        command.Parameters.Add(new SqlParameter("@IncludeOrderBook", SqlDbType.Bit) { Value = includeOrderBook });
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-            list.Add(new(reader.GetString(0), reader.GetString(1)));
         return list;
     }
 

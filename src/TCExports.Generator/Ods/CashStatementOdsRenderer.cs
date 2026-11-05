@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Globalization;
 using TCExports.Generator.CashStatement.Model;
+using TCExports.Generator.CashStatement;
 
 namespace TCExports.Generator.Ods;
 
@@ -99,6 +100,17 @@ public sealed class CashStatementOdsRenderer
                 grid.Set(3, columnNumber, Text($"{period.YearLabel} ({period.CashStatus})", StatementPresentationRole.ColumnHeader));
         }
         grid.ApplyRoleToRow(4, StatementPresentationRole.ColumnHeader);
+        foreach (var column in columns.Where(column => column.PeriodId is not null))
+        {
+            var period = document.PeriodGrid.Periods.Single(item => item.Id == column.PeriodId);
+            if (period.DiffersFromSelectedVersion)
+            {
+                grid.ApplyRoleToCell(
+                    4,
+                    column.PresentationOrder + 1,
+                    StatementPresentationRole.PeriodVersionWarning);
+            }
+        }
         grid.ApplyFormatToRow(4, topBorder: OdsBorderWeight.Thin, bottomBorder: OdsBorderWeight.Thick);
 
         var currentRow = 4;
@@ -293,7 +305,6 @@ public sealed class CashStatementOdsRenderer
             Row(Text("Format", StatementPresentationRole.ColumnHeader), Text("ods")),
             Row(Text("User", StatementPresentationRole.ColumnHeader), Text(document.Metadata.RequestedBy)),
             Row(Blank(), Blank()),
-            Row(Blank(), Blank()),
             Row(Text("Parameters", StatementPresentationRole.SectionHeader), Blank())
         };
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -309,6 +320,28 @@ public sealed class CashStatementOdsRenderer
         };
         rows.AddRange(values.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .Select(pair => Row(Text(pair.Key), Text(pair.Value))));
+        var categoryTree = CashStatementSettingsDataBuilder.Build(document);
+        if (!categoryTree.CategoryTree.IsEmpty)
+        {
+            rows.Add(Row(Blank(), Blank()));
+            rows.Add(Row(Text("Category Tree", StatementPresentationRole.SectionHeader), Blank()));
+            rows.AddRange(categoryTree.CategoryTree.Select(setting =>
+                Row(Text(setting.Name), Text(setting.Value))));
+            rows.Add(Row(Blank(), Blank()));
+            rows.Add(Row(Text("Periods using a different Category Tree",
+                StatementPresentationRole.SectionHeader), Blank()));
+            rows.Add(Row(Text("Period", StatementPresentationRole.ColumnHeader),
+                Text("Applicable version", StatementPresentationRole.ColumnHeader)));
+            if (categoryTree.PeriodComparisons.IsEmpty)
+            {
+                rows.Add(Row(Text("None"), Blank()));
+            }
+            else
+            {
+                rows.AddRange(categoryTree.PeriodComparisons.Select(comparison =>
+                    Row(Text(comparison.Period), Text(comparison.ApplicableCategoryVersionId))));
+            }
+        }
         return new OdsWorksheet(
             new StatementSheetId("settings"),
             "Settings",
@@ -436,6 +469,16 @@ public sealed class CashStatementOdsRenderer
                 throw new InvalidOperationException($"ODS row {rowNumber} is outside the allocated grid.");
             for (var column = 0; column < columnCount; column++)
                 _cells[rowNumber - 1, column] = _cells[rowNumber - 1, column] with { PresentationRole = role };
+        }
+
+        public void ApplyRoleToCell(int rowNumber, int columnNumber, StatementPresentationRole role)
+        {
+            if (rowNumber < 1 || rowNumber > rowCount || columnNumber < 1 || columnNumber > columnCount)
+                throw new InvalidOperationException($"ODS cell {rowNumber},{columnNumber} is outside the allocated grid.");
+            _cells[rowNumber - 1, columnNumber - 1] = _cells[rowNumber - 1, columnNumber - 1] with
+            {
+                PresentationRole = role
+            };
         }
 
         public void ApplyFormatToRow(

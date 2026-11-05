@@ -22,3 +22,9 @@ public sealed class MonthDto
     public string MonthName { get; init; } = "";    
     public decimal? StartOn { get; init; }  // Decimal sort key from vwMonths.StartOn (not a date)
 }
+
+public sealed record StatementPeriodBoundaryDto(
+    short YearNumber,
+    short MonthNumber,
+    DateOnly StartOn,
+    DateOnly EndOn);

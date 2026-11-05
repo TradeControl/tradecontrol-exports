@@ -1,6 +1,7 @@
 using System.Globalization;
 using ClosedXML.Excel;
 using TCExports.Generator.CashStatement.Model;
+using TCExports.Generator.CashStatement;
 
 namespace TCExports.Generator.Excel;
 
@@ -116,6 +117,8 @@ public sealed class CashStatementXlsxRenderer
             }
             if (period.IsActive)
                 worksheet.Column(columnNumber).Style.Fill.BackgroundColor = XLColor.Yellow;
+            if (period.DiffersFromSelectedVersion)
+                worksheet.Cell(4, columnNumber).Style.Fill.BackgroundColor = XLColor.FromHtml("#FCE4D6");
         }
 
         var currentRow = 4;
@@ -393,8 +396,8 @@ public sealed class CashStatementXlsxRenderer
         worksheet.Cell(3, 1).Value = "User";
         worksheet.Cell(3, 2).Value = document.Metadata.RequestedBy;
         // Row 4 deliberately remains blank: SQL credentials are never rendered.
-        worksheet.Cell(6, 1).Value = "Parameters";
-        worksheet.Row(6).Style.Font.Bold = true;
+        worksheet.Cell(5, 1).Value = "Parameters";
+        worksheet.Row(5).Style.Font.Bold = true;
 
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -407,12 +410,50 @@ public sealed class CashStatementXlsxRenderer
             ["includeTaxAccruals"] = Boolean(document.Request.IncludeTaxAccruals),
             ["includeVatDetails"] = Boolean(document.Request.IncludeVatDetails)
         };
-        var row = 7;
+        var row = 6;
         foreach (var pair in values.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
             worksheet.Cell(row, 1).Value = pair.Key;
             worksheet.Cell(row, 2).Value = pair.Value;
             row++;
+        }
+
+        var categoryTree = CashStatementSettingsDataBuilder.Build(document);
+        if (!categoryTree.CategoryTree.IsEmpty)
+        {
+            row++;
+            worksheet.Cell(row, 1).Value = "Category Tree";
+            worksheet.Row(row).Style.Font.Bold = true;
+            row++;
+            foreach (var setting in categoryTree.CategoryTree)
+            {
+                worksheet.Cell(row, 1).Value = setting.Name;
+                worksheet.Cell(row, 2).Value = setting.Value;
+                row++;
+            }
+
+            row++;
+            worksheet.Cell(row, 1).Value = "Periods using a different Category Tree";
+            worksheet.Row(row).Style.Font.Bold = true;
+            row++;
+            worksheet.Cell(row, 1).Value = "Period";
+            worksheet.Cell(row, 2).Value = "Applicable version";
+            worksheet.Row(row).Style.Font.Bold = true;
+            row++;
+            if (categoryTree.PeriodComparisons.IsEmpty)
+            {
+                worksheet.Cell(row, 1).Value = "None";
+                row++;
+            }
+            else
+            {
+                foreach (var comparison in categoryTree.PeriodComparisons)
+                {
+                    worksheet.Cell(row, 1).Value = comparison.Period;
+                    worksheet.Cell(row, 2).Value = comparison.ApplicableCategoryVersionId;
+                    row++;
+                }
+            }
         }
 
         worksheet.Column(1).Width = 24;

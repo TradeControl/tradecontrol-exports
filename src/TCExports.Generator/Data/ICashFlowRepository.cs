@@ -10,9 +10,8 @@ public interface ICashFlowRepository
         int commandTimeoutSeconds = 30,
         CancellationToken ct = default);
 
-    Task<IReadOnlyList<string>> GetCategoryTreeProjectionMismatchesAsync(
+    Task<IReadOnlyList<CategoryTreeVersionIntervalDto>> GetCategoryTreeVersionTimelineAsync(
         string connectionString,
-        string categoryVersionId,
         int commandTimeoutSeconds = 30,
         CancellationToken ct = default);
 
@@ -30,10 +29,10 @@ public interface ICashFlowRepository
     Task<ActivePeriodDto> GetActivePeriodAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
     Task<IReadOnlyList<ActiveYearDto>> GetActiveYearsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
     Task<IReadOnlyList<MonthDto>> GetMonthsAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<StatementPeriodBoundaryDto>> GetStatementPeriodBoundariesAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 
     Task<IReadOnlyList<FlowCategoryDto>> GetCategoriesAsync(string connectionString, string categoryVersionId, CashType cashType, int commandTimeoutSeconds = 30, CancellationToken ct = default);
     Task<IReadOnlyList<FlowCategoryCashCodeDto>> GetCashCodesAsync(string connectionString, string categoryVersionId, string categoryCode, int commandTimeoutSeconds = 30, CancellationToken ct = default);
-    Task<IReadOnlyList<UnmappedCashCodeDto>> GetUnmappedTransactionCashCodesAsync(string connectionString, string categoryVersionId, short fromYearNumber, short toYearNumber, bool includeOrderBook, int commandTimeoutSeconds = 30, CancellationToken ct = default);
     Task<IReadOnlyList<FlowCategoriesByTypeDto>> GetCategoriesByTypeAsync(string connectionString, string categoryVersionId, CashType cashType, CategoryType categoryType, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 
     Task<IReadOnlyList<CategoryTotalDto>> GetCategoryTotalsAsync(string connectionString, string categoryVersionId, int commandTimeoutSeconds = 30, CancellationToken ct = default);
@@ -63,4 +62,5 @@ public interface ICashFlowRepository
     Task<IReadOnlyList<BalanceSheetEntryDto>> GetBalanceSheetAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 
     Task<IReadOnlyList<EquityReconciliationByYearDto>> GetEquityReconciliationByYearAsync(string connectionString, int commandTimeoutSeconds = 30, CancellationToken ct = default);
+    Task<IReadOnlyList<EquityReconciliationByYearDto>> GetEquityReconciliationByYearByVersionAsync(string connectionString, string categoryVersionId, int commandTimeoutSeconds = 30, CancellationToken ct = default);
 }

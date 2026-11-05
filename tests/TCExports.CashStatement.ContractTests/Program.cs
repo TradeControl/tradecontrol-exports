@@ -23,13 +23,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("model types do not depend on spreadsheet or database packages", Sync(ModelIsRendererNeutral)),
     ("default limits cover the accepted baselines while remaining bounded", Sync(LimitsCoverBaselines)),
     ("typed boundary parsing rejects invalid and unknown options", Sync(TypedBoundaryParsing)),
-    ("Category Tree version resolution keeps the core graph coherent and gates active-dependent sections", CategoryVersionResolution),
+    ("Category Tree version resolution keeps the core graph coherent and permits historical rendering", CategoryVersionResolution),
     ("cash export validation accepts both native spreadsheet formats", CashExportValidation),
     ("cash export handler routes both formats through the shared model", NativeFormatRouting),
     ("export runner honours caller cancellation", ExportRunnerCancellation),
     ("builder observes cancellation during source acquisition", BuilderSourceCancellation),
     ("native renderers observe cancellation during serialization", RendererCancellation),
     ("period grid preserves a non-January financial calendar", Sync(NonJanuaryPeriodGrid)),
+    ("period attribution follows inclusive Category Tree effectivity dates", Sync(PeriodVersionAttribution)),
     ("formula evaluator uses authoritative values and lazy conditionals", Sync(FormulaEvaluation)),
     ("money and ratio calculations preserve deterministic decimal precision", Sync(DecimalPrecisionSemantics)),
     ("forward dependencies are independent of presentation order", Sync(ForwardDependencyValidation)),
@@ -530,7 +531,8 @@ static async Task CategoryVersionResolution()
         IncludeTaxAccruals: false,
         IncludeVatDetails: false,
         IncludeBankBalances: false,
-        IncludeBalanceSheet: false);
+        IncludeBalanceSheet: false,
+        IncludeReconciliation: true);
     var active = await new CashStatementBuilder(repository).BuildAsync(
         "Server=(test);Database=(test)",
         request,
@@ -544,22 +546,10 @@ static async Task CategoryVersionResolution()
     Require(repository.CategoryVersionCalls.Count > 0
         && repository.CategoryVersionCalls.All(versionId => versionId == "CV00000001"),
         "the core category graph did not use one resolved Category Tree version");
-
-    var missingMappingRepository = CreateFlowRepository();
-    missingMappingRepository.UnmappedCashCodes = new[]
-    {
-        new UnmappedCashCodeDto("CC-LATER", "Later Cash Code")
-    };
-    var missingMapping = await new CashStatementBuilder(missingMappingRepository).BuildAsync(
-        "Server=(test);Database=(test)",
-        request,
-        "contract-test",
-        DateTimeOffset.UtcNow);
-    Require(!missingMapping.IsSuccess
-        && missingMapping.Violations.Any(item =>
-            item.Code == "CATEGORY_VERSION_CASH_CODE_UNMAPPED"
-            && item.Message.Contains("CC-LATER", StringComparison.Ordinal)),
-        "transaction-bearing Cash Codes missing from the selected mapping were not rejected");
+    Equal(1, repository.ReconciliationCalls,
+        "the active selection did not retain the protected Equity Bridge view");
+    Equal(0, repository.VersionedReconciliationCalls.Count,
+        "the active selection called the version-explicit Equity Bridge");
 
     var archived = new CategoryTreeVersionDto(
         "CV00000002",
@@ -567,7 +557,7 @@ static async Task CategoryVersionResolution()
         3,
         "Archived",
         new DateTime(2025, 1, 1),
-        new DateTime(2026, 1, 1),
+        new DateTime(2025, 12, 31),
         new DateTime(2025, 6, 1),
         new string('B', 64),
         2);
@@ -585,37 +575,10 @@ static async Task CategoryVersionResolution()
     Require(repository.CategoryVersionCalls.Count > 0
         && repository.CategoryVersionCalls.All(versionId => versionId == archived.VersionId),
         "the historical core graph mixed selected and active Category Tree versions");
-
-    repository.CategoryTreeProjectionMismatches = new[] { "VAT_ROOT" };
-    var pending = await new CashStatementBuilder(repository).BuildAsync(
-        "Server=(test);Database=(test)",
-        request with { CategoryVersionId = archived.VersionId, IncludeVatDetails = true },
-        "contract-test",
-        DateTimeOffset.UtcNow);
-    Require(!pending.IsSuccess
-        && pending.Violations.Any(item => item.Code == "CATEGORY_VERSION_OPTIONAL_PROJECTION_MISMATCH"),
-        "a historical request with a changed optional-section dependency did not fail closed");
-
-    repository.CategoryTreeProjectionMismatches = new[] { "OPEN_PROJECT_POLARITY" };
-    var accrualMismatch = await new CashStatementBuilder(repository).BuildAsync(
-        "Server=(test);Database=(test)",
-        request with { CategoryVersionId = archived.VersionId, IncludeTaxAccruals = true },
-        "contract-test",
-        DateTimeOffset.UtcNow);
-    Require(!accrualMismatch.IsSuccess
-        && accrualMismatch.Violations.Any(item => item.Code == "CATEGORY_VERSION_OPTIONAL_PROJECTION_MISMATCH"),
-        "changed open-project polarity did not block historical tax accruals");
-
-    repository.CategoryTreeProjectionMismatches = new[] { "ASSET_ACCOUNT_POLARITY" };
-    var assetMismatch = await new CashStatementBuilder(repository).BuildAsync(
-        "Server=(test);Database=(test)",
-        request with { CategoryVersionId = archived.VersionId, IncludeBalanceSheet = true },
-        "contract-test",
-        DateTimeOffset.UtcNow);
-    Require(!assetMismatch.IsSuccess
-        && assetMismatch.Violations.Any(item => item.Code == "CATEGORY_VERSION_OPTIONAL_PROJECTION_MISMATCH"),
-        "changed asset-account polarity did not block the historical balance sheet");
-    repository.CategoryTreeProjectionMismatches = Array.Empty<string>();
+    Equal(1, repository.ReconciliationCalls,
+        "historical rendering changed the protected active Equity Bridge call count");
+    Require(repository.VersionedReconciliationCalls.SequenceEqual(new[] { archived.VersionId }),
+        "historical rendering did not use the selected version for the Equity Bridge");
 
     repository.CategoryTreeResolution = new(
         repository.CategoryTreeResolution.ActiveVersion,
@@ -662,6 +625,49 @@ static void NonJanuaryPeriodGrid()
     Equal(StatementPeriodId.Annual(2026), result.Value.Periods[12].Id, "first annual period");
     Equal(StatementPeriodId.Month(2027, 4), result.Value.Periods[13].Id, "second-year first month");
     Equal(1, result.Value.Periods.Count(p => p.IsActive), "active-period count");
+}
+
+static void PeriodVersionAttribution()
+{
+    var periods = new StatementPeriodGrid(ImmutableArray.Create(
+        new StatementPeriod(StatementPeriodId.Month(2023, 12), 0, "DEC", "2023", "CLOSED", null, false),
+        new StatementPeriod(StatementPeriodId.Annual(2023), 1, string.Empty, "2023", "CLOSED", null, false),
+        new StatementPeriod(StatementPeriodId.Month(2024, 1), 2, "JAN", "2024", "CLOSED", null, false),
+        new StatementPeriod(StatementPeriodId.Month(2024, 2), 3, "FEB", "2024", "OPEN", null, true),
+        new StatementPeriod(StatementPeriodId.Annual(2024), 4, string.Empty, "2024", "OPEN", null, false)));
+    var boundaries = new[]
+    {
+        new StatementPeriodBoundaryDto(2023, 12, new DateOnly(2023, 12, 1), new DateOnly(2023, 12, 31)),
+        new StatementPeriodBoundaryDto(2024, 1, new DateOnly(2024, 1, 1), new DateOnly(2024, 1, 31)),
+        new StatementPeriodBoundaryDto(2024, 2, new DateOnly(2024, 2, 1), new DateOnly(2024, 2, 29))
+    };
+    var versions = new[]
+    {
+        new CategoryTreeVersionIntervalDto("CV00000001", new DateOnly(2024, 1, 1), new DateOnly(2024, 1, 31)),
+        new CategoryTreeVersionIntervalDto("CV00000002", new DateOnly(2024, 2, 1), null)
+    };
+
+    var active = CashStatementPeriodVersionAttributor.Attribute(
+        periods, boundaries, versions, "CV00000002");
+    Require(active.IsSuccess, "active-version period attribution failed");
+    var attributed = active.Value!.Periods;
+    Equal("CV00000001", attributed[0].ApplicableCategoryVersionId, "pre-versioning baseline");
+    Require(attributed[0].DiffersFromSelectedVersion, "pre-versioning baseline warning");
+    Equal("CV00000001", attributed[2].ApplicableCategoryVersionId, "inclusive predecessor end");
+    Require(attributed[2].DiffersFromSelectedVersion, "historical-period warning");
+    Equal("CV00000002", attributed[3].ApplicableCategoryVersionId, "inclusive successor start");
+    Require(!attributed[3].DiffersFromSelectedVersion, "current-period false warning");
+    Equal("CV00000002", attributed[4].ApplicableCategoryVersionId, "annual period attribution");
+
+    var historical = CashStatementPeriodVersionAttributor.Attribute(
+        periods, boundaries, versions, "CV00000001");
+    Require(historical.IsSuccess, "historical-version period attribution failed");
+    Require(!historical.Value!.Periods[2].DiffersFromSelectedVersion,
+        "selected historical period was marked as different");
+    Require(historical.Value.Periods[3].DiffersFromSelectedVersion,
+        "later period did not warn for a historical selection");
+    Require(historical.Value.Periods[4].DiffersFromSelectedVersion,
+        "annual period did not warn for a historical selection");
 }
 
 static void FormulaEvaluation()
@@ -1263,16 +1269,16 @@ sealed class StubCashFlowRepository : ICashFlowRepository
     public CancellationTokenSource? CancelAfterFirstCall { get; init; }
     public CategoryTreeVersionResolutionDto CategoryTreeResolution { get; set; } =
         new(DefaultCategoryVersion, DefaultCategoryVersion);
-    public IReadOnlyList<string> CategoryTreeProjectionMismatches { get; set; } =
-        Array.Empty<string>();
+    public IReadOnlyList<CategoryTreeVersionIntervalDto> CategoryTreeVersionTimeline { get; set; } =
+        Array.Empty<CategoryTreeVersionIntervalDto>();
     public ActivePeriodDto ActivePeriod { get; init; } = new();
     public IReadOnlyList<ActiveYearDto> Years { get; init; } = Array.Empty<ActiveYearDto>();
     public IReadOnlyList<MonthDto> Months { get; set; } = Array.Empty<MonthDto>();
+    public IReadOnlyList<StatementPeriodBoundaryDto> StatementPeriodBoundaries { get; set; } =
+        Array.Empty<StatementPeriodBoundaryDto>();
     public Dictionary<CashType, IReadOnlyList<FlowCategoryDto>> Categories { get; } = new();
     public Dictionary<string, IReadOnlyList<FlowCategoryCashCodeDto>> CashCodes { get; } =
         new(StringComparer.OrdinalIgnoreCase);
-    public IReadOnlyList<UnmappedCashCodeDto> UnmappedCashCodes { get; set; } =
-        Array.Empty<UnmappedCashCodeDto>();
     public Dictionary<(CashType CashType, CategoryType CategoryType), IReadOnlyList<FlowCategoriesByTypeDto>> CalculatedTotals { get; } = new();
     public Dictionary<(string CashCode, short Year), IReadOnlyList<CashCodePeriodValue>> Values { get; } = new();
     public IReadOnlyList<CategoryTotalDto> TotalCategories { get; set; } = Array.Empty<CategoryTotalDto>();
@@ -1294,6 +1300,7 @@ sealed class StubCashFlowRepository : ICashFlowRepository
     public int VatSourceCalls { get; private set; }
     public int BalanceSheetCalls { get; private set; }
     public int ReconciliationCalls { get; private set; }
+    public List<string> VersionedReconciliationCalls { get; } = new();
     public List<(int Timeout, CancellationToken Token)> Calls { get; } = new();
     public List<string> CategoryVersionCalls { get; } = new();
     public List<(string CashCode, bool IncludeActivePeriods, bool IncludeOrderBook, bool IncludeTaxAccruals)> ValueCalls { get; } = new();
@@ -1308,15 +1315,32 @@ sealed class StubCashFlowRepository : ICashFlowRepository
         return Task.FromResult(CategoryTreeResolution);
     }
 
-    public Task<IReadOnlyList<string>> GetCategoryTreeProjectionMismatchesAsync(
+    public Task<IReadOnlyList<CategoryTreeVersionIntervalDto>> GetCategoryTreeVersionTimelineAsync(
         string connectionString,
-        string categoryVersionId,
         int commandTimeoutSeconds = 30,
         CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
-        CategoryVersionCalls.Add(categoryVersionId);
-        return Task.FromResult(CategoryTreeProjectionMismatches);
+        if (CategoryTreeVersionTimeline.Count > 0)
+            return Task.FromResult(CategoryTreeVersionTimeline);
+
+        var versions = new[]
+            {
+                CategoryTreeResolution.ActiveVersion,
+                CategoryTreeResolution.SelectedVersion
+            }
+            .Where(version => version?.EffectiveFromOn is not null)
+            .Select(version => version!)
+            .DistinctBy(version => version.VersionId, StringComparer.OrdinalIgnoreCase)
+            .Select(version => new CategoryTreeVersionIntervalDto(
+                version.VersionId,
+                DateOnly.FromDateTime(version.EffectiveFromOn!.Value),
+                version.EffectiveToOn is null
+                    ? null
+                    : DateOnly.FromDateTime(version.EffectiveToOn.Value)))
+            .OrderBy(version => version.EffectiveFromOn)
+            .ToArray();
+        return Task.FromResult<IReadOnlyList<CategoryTreeVersionIntervalDto>>(versions);
     }
 
     public Task<IReadOnlyList<CashCodePeriodValue>> GetCashCodeValuesAsync(
@@ -1359,6 +1383,35 @@ sealed class StubCashFlowRepository : ICashFlowRepository
         return Task.FromResult(Months);
     }
 
+    public Task<IReadOnlyList<StatementPeriodBoundaryDto>> GetStatementPeriodBoundariesAsync(
+        string connectionString,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
+        Track(commandTimeoutSeconds, ct);
+        if (StatementPeriodBoundaries.Count > 0)
+            return Task.FromResult(StatementPeriodBoundaries);
+        if (Months.Count == 0)
+            return Task.FromResult<IReadOnlyList<StatementPeriodBoundaryDto>>(
+                Array.Empty<StatementPeriodBoundaryDto>());
+
+        var firstMonth = Months[0].MonthNumber;
+        var boundaries = Years
+            .SelectMany(year => Months.Select(month =>
+            {
+                var calendarYear = year.YearNumber + (month.MonthNumber < firstMonth ? 1 : 0);
+                var start = new DateOnly(calendarYear, month.MonthNumber, 1);
+                return new StatementPeriodBoundaryDto(
+                    year.YearNumber,
+                    month.MonthNumber,
+                    start,
+                    start.AddMonths(1).AddDays(-1));
+            }))
+            .OrderBy(boundary => boundary.StartOn)
+            .ToArray();
+        return Task.FromResult<IReadOnlyList<StatementPeriodBoundaryDto>>(boundaries);
+    }
+
     public Task<IReadOnlyList<FlowCategoryDto>> GetCategoriesAsync(string connectionString, string categoryVersionId, CashType cashType, int commandTimeoutSeconds = 30, CancellationToken ct = default)
     {
         Track(commandTimeoutSeconds, ct);
@@ -1373,13 +1426,6 @@ sealed class StubCashFlowRepository : ICashFlowRepository
         CategoryVersionCalls.Add(categoryVersionId);
         CashCodes.TryGetValue(categoryCode, out var cashCodes);
         return Task.FromResult(cashCodes ?? (IReadOnlyList<FlowCategoryCashCodeDto>)Array.Empty<FlowCategoryCashCodeDto>());
-    }
-
-    public Task<IReadOnlyList<UnmappedCashCodeDto>> GetUnmappedTransactionCashCodesAsync(string connectionString, string categoryVersionId, short fromYearNumber, short toYearNumber, bool includeOrderBook, int commandTimeoutSeconds = 30, CancellationToken ct = default)
-    {
-        Track(commandTimeoutSeconds, ct);
-        CategoryVersionCalls.Add(categoryVersionId);
-        return Task.FromResult(UnmappedCashCodes);
     }
 
     public Task<IReadOnlyList<FlowCategoriesByTypeDto>> GetCategoriesByTypeAsync(string connectionString, string categoryVersionId, CashType cashType, CategoryType categoryType, int commandTimeoutSeconds = 30, CancellationToken ct = default)
@@ -1486,6 +1532,13 @@ sealed class StubCashFlowRepository : ICashFlowRepository
     {
         Track(commandTimeoutSeconds, ct);
         ReconciliationCalls++;
+        return Task.FromResult(ReconciliationRows);
+    }
+
+    public Task<IReadOnlyList<EquityReconciliationByYearDto>> GetEquityReconciliationByYearByVersionAsync(string connectionString, string categoryVersionId, int commandTimeoutSeconds = 30, CancellationToken ct = default)
+    {
+        Track(commandTimeoutSeconds, ct);
+        VersionedReconciliationCalls.Add(categoryVersionId);
         return Task.FromResult(ReconciliationRows);
     }
 

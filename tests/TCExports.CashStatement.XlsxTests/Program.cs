@@ -138,12 +138,27 @@ static void RendererSkeleton()
     Require(cashFlow.Cell("D14").Style.Font.FontColor == XLColor.Red, "expression diagnostic is not red");
     Require(cashFlow.Cell("E14").IsEmpty(), "expression diagnostic was repeated across the row");
     Require(cashFlow.Column(3).IsHidden, "marker column is visible");
+    Require(cashFlow.Cell("D4").Style.Fill.BackgroundColor == XLColor.FromHtml("#FCE4D6"),
+        "active differing-period header fill is absent");
+    Require(cashFlow.Cell("D7").Style.Fill.BackgroundColor == XLColor.Yellow,
+        "active-period column fill below warning header is absent");
+    Require(cashFlow.Cell("E4").Style.Fill.BackgroundColor != XLColor.FromHtml("#FCE4D6"),
+        "matching period received a warning fill");
+    Require(cashFlow.Cell("F4").Style.Fill.BackgroundColor == XLColor.FromHtml("#FCE4D6"),
+        "annual differing-period header fill is absent");
 
     var settings = workbook.Worksheet("Settings");
     Require(settings.Cell("A4").IsEmpty() && settings.Cell("B4").IsEmpty(),
         "credential-removal spacer row is not blank");
     Require(!settings.CellsUsed().Any(cell => cell.GetString().Contains("Server=", StringComparison.OrdinalIgnoreCase)),
         "settings sheet contains a SQL connection string");
+    Require(settings.Cell("A5").GetString() == "Parameters" && !settings.Row(5).IsEmpty(),
+        "redundant Settings spacer row remains");
+    Equal("CV00000002", settings.Cell("B16").GetString(), "selected Category Tree version");
+    Equal("Not validated since latest tree change", settings.Cell("B20").GetString(),
+        "selected canonical evidence warning");
+    Equal("CV00000001", settings.Cell("B31").GetString(), "first differing-period version");
+    Equal("CV00000001", settings.Cell("B32").GetString(), "annual differing-period version");
 
     var reconciliation = workbook.Worksheet("Reconciliation");
     Equal("Submission checks (Does it add up?)", reconciliation.Cell("A1").GetString(), "reconciliation title");
@@ -311,10 +326,22 @@ static FixtureData Fixture()
         new CashStatementMetadata("Example", "Cash Statement", "owner", DateTimeOffset.UnixEpoch, month1),
         new CashStatementRequestV1(IncludeReconciliation: true),
         new StatementPeriodGrid(ImmutableArray.Create(
-            new StatementPeriod(month1, 0, "JAN", "2026-27", "Active", new DateOnly(2026, 1, 1), true),
-            new StatementPeriod(month2, 1, "FEB", "2026-27", "Active", new DateOnly(2026, 2, 1), false),
-            new StatementPeriod(annual, 2, "TOTALS", "2026-27", "Active", null, false))),
-        ImmutableArray.Create(cashSheet, reconciliationSheet));
+            new StatementPeriod(month1, 0, "JAN", "2026-27", "Active", new DateOnly(2026, 1, 1), true,
+                "CV00000001", true),
+            new StatementPeriod(month2, 1, "FEB", "2026-27", "Active", new DateOnly(2026, 2, 1), false,
+                "CV00000002", false),
+            new StatementPeriod(annual, 2, "TOTALS", "2026-27", "Active", null, false,
+                "CV00000001", true))),
+        ImmutableArray.Create(cashSheet, reconciliationSheet),
+        new CashStatementCategoryTreeContext(
+            new CashStatementCategoryTreeVersion(
+                "CV00000002", "Current tree", 1, "Published",
+                new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero), null,
+                DateTimeOffset.UnixEpoch, null, null),
+            new CashStatementCategoryTreeVersion(
+                "CV00000002", "Current tree", 1, "Published",
+                new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero), null,
+                DateTimeOffset.UnixEpoch, null, null)));
 
     return new FixtureData(
         document,

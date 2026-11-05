@@ -10,7 +10,11 @@ public sealed class CashStatementContractValidator : ICashStatementContractValid
         CashStatementLimits limits)
     {
         var violations = ImmutableArray.CreateBuilder<StatementContractViolation>();
-        var periodIds = ValidatePeriods(document.PeriodGrid, limits, violations);
+        var periodIds = ValidatePeriods(
+            document.PeriodGrid,
+            document.CategoryTree?.SelectedVersion.VersionId,
+            limits,
+            violations);
         var cells = new Dictionary<StatementCellAddress, StatementCell>();
         var dependencyGraph = new Dictionary<StatementCellAddress, HashSet<StatementCellAddress>>();
 
@@ -144,6 +148,7 @@ public sealed class CashStatementContractValidator : ICashStatementContractValid
 
     private static HashSet<StatementPeriodId> ValidatePeriods(
         StatementPeriodGrid grid,
+        string? selectedCategoryVersionId,
         CashStatementLimits limits,
         ImmutableArray<StatementContractViolation>.Builder violations)
     {
@@ -157,6 +162,26 @@ public sealed class CashStatementContractValidator : ICashStatementContractValid
                 violations.Add(new("PERIOD_ID_DUPLICATE", $"periodGrid.{period.Id}", $"Period '{period.Id}' occurs more than once."));
             if (period.Id.MonthNumber is < 1 or > 12)
                 violations.Add(new("PERIOD_MONTH_INVALID", $"periodGrid.{period.Id}", "Monthly period must use month 1 through 12."));
+            if (selectedCategoryVersionId is not null)
+            {
+                if (string.IsNullOrWhiteSpace(period.ApplicableCategoryVersionId))
+                {
+                    violations.Add(new(
+                        "CATEGORY_VERSION_PERIOD_MISSING",
+                        $"periodGrid.{period.Id}",
+                        "The period does not identify its historically applicable Category Tree version."));
+                }
+                else if (period.DiffersFromSelectedVersion == string.Equals(
+                    period.ApplicableCategoryVersionId,
+                    selectedCategoryVersionId,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    violations.Add(new(
+                        "CATEGORY_VERSION_PERIOD_COMPARISON_INVALID",
+                        $"periodGrid.{period.Id}",
+                        "The period Category Tree comparison flag does not match its version identifiers."));
+                }
+            }
         }
 
         return ids;

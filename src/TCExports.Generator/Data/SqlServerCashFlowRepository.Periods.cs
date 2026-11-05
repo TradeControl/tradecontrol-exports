@@ -76,4 +76,30 @@ public sealed partial class SqlServerCashFlowRepository : ICashFlowRepository
         }
         return list;
     }
+
+    public async Task<IReadOnlyList<StatementPeriodBoundaryDto>> GetStatementPeriodBoundariesAsync(
+        string connectionString,
+        int commandTimeoutSeconds = 30,
+        CancellationToken ct = default)
+    {
+        var list = new List<StatementPeriodBoundaryDto>();
+        var adoConnString = ConnectionStringUtil.ToSqlClient(connectionString);
+        await using var conn = new SqlConnection(adoConnString);
+        await conn.OpenAsync(ct);
+        await using var cmd = Query(
+            conn,
+            "SELECT YearNumber, MonthNumber, StartOn, EndOn FROM App.fnStatementPeriods() ORDER BY StartOn;",
+            commandTimeoutSeconds);
+        await using var rdr = await cmd.ExecuteReaderAsync(ct);
+
+        while (await rdr.ReadAsync(ct))
+        {
+            list.Add(new(
+                rdr.GetInt16(rdr.GetOrdinal("YearNumber")),
+                rdr.GetInt16(rdr.GetOrdinal("MonthNumber")),
+                DateOnly.FromDateTime(rdr.GetDateTime(rdr.GetOrdinal("StartOn"))),
+                DateOnly.FromDateTime(rdr.GetDateTime(rdr.GetOrdinal("EndOn")))));
+        }
+        return list;
+    }
 }

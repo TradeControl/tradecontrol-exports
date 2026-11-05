@@ -48,7 +48,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("deterministic package", DeterministicPackageAsync),
     ("package contract rejects mutations", PackageMutationTestsAsync),
     ("limits, cancellation, and disposal", LimitsCancellationAndDisposalAsync),
-    ("unallocated formula dependency fails", UnallocatedDependencyAsync)
+    ("unallocated formula dependency fails", UnallocatedDependencyAsync),
+    ("Settings carries Category Tree evidence and period differences", SettingsCategoryTreeAsync)
 };
 
 var passed = 0;
@@ -101,6 +102,14 @@ async Task HostileFixtureAsync()
         (string?)properties.Attribute(Ns.Style + "cell-protect") == "none"), "unlocked cell style missing");
     Require(snapshot.Content.Descendants(Ns.Style + "table-cell-properties").Any(properties =>
         (string?)properties.Attribute(Ns.Fo + "background-color") == "#ffff00"), "active-period fill missing");
+    Require(snapshot.Styles.Descendants(Ns.Style + "style").Any(style =>
+        (string?)style.Attribute(Ns.Style + "name") == "PeriodVersionWarning"
+        && style.Elements(Ns.Style + "table-cell-properties").Any(properties =>
+            (string?)properties.Attribute(Ns.Fo + "background-color") == "#fce4d6")),
+        "period-version warning style missing");
+    Require(snapshot.Content.Descendants(Ns.Style + "style").Any(style =>
+        (string?)style.Attribute(Ns.Style + "parent-style-name") == "PeriodVersionWarning"),
+        "period-version warning cell did not use its semantic style");
     Require(snapshot.Content.Descendants(Ns.Style + "table-cell-properties").Any(properties =>
         (string?)properties.Attribute(Ns.Fo + "border-right") == "1.5pt solid #000000"), "annual border missing");
 }
@@ -216,6 +225,51 @@ async Task UnallocatedDependencyAsync()
         new OdsSpreadsheetDocument(ImmutableArray.Create(worksheet))), "missing dependency");
 }
 
+async Task SettingsCategoryTreeAsync()
+{
+    var periodId = StatementPeriodId.Month(2026, 1);
+    var cashFlow = new StatementSheet(
+        new StatementSheetId("cash-flow"),
+        StatementSheetKind.CashFlow,
+        0,
+        "Cash Flow",
+        ImmutableArray.Create(
+            new StatementColumn(new StatementColumnId("code"), "Code", StatementColumnKind.Identifier, 0),
+            new StatementColumn(new StatementColumnId("label"), "Name", StatementColumnKind.Label, 1),
+            new StatementColumn(new StatementColumnId("marker"), string.Empty, StatementColumnKind.HiddenMarker, 2)),
+        ImmutableArray<StatementSection>.Empty);
+    var document = new CashStatementDocument(
+        new CashStatementMetadata("Example", "Cash Statement", "owner", DateTimeOffset.UnixEpoch, periodId),
+        new CashStatementRequestV1(CategoryVersionId: "CV00000001"),
+        new StatementPeriodGrid(ImmutableArray.Create(
+            new StatementPeriod(periodId, 0, "JAN", "2026-27", "Closed", new DateOnly(2026, 1, 1), false,
+                "CV00000002", true))),
+        ImmutableArray.Create(cashFlow),
+        new CashStatementCategoryTreeContext(
+            new CashStatementCategoryTreeVersion(
+                "CV00000002", "Current tree", 1, "Published",
+                new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero), null,
+                DateTimeOffset.UnixEpoch, null, null),
+            new CashStatementCategoryTreeVersion(
+                "CV00000001", "Historical tree", 3, "Archived",
+                new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 1, 31, 0, 0, 0, TimeSpan.Zero),
+                DateTimeOffset.UnixEpoch, "ABCDEF", 1234)));
+
+    var bytes = await new CashStatementOdsRenderer().RenderAsync(document);
+    using var stream = new MemoryStream(bytes);
+    using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+    using var contentStream = archive.GetEntry("content.xml")!.Open();
+    var content = XDocument.Load(contentStream);
+    var text = string.Join("|", content.Descendants(Ns.Text + "p").Select(item => item.Value));
+    Require(text.Contains("Selected version|CV00000001", StringComparison.Ordinal),
+        "selected Category Tree version missing from ODS Settings");
+    Require(text.Contains("Selected canonical SHA-256|ABCDEF", StringComparison.Ordinal),
+        "selected canonical evidence missing from ODS Settings");
+    Require(text.Contains("Periods using a different Category Tree|Period|Applicable version|2026-27 JAN|CV00000002",
+        StringComparison.Ordinal), "period comparison missing from ODS Settings");
+}
+
 static async Task WriteAsync(string path, OdsSpreadsheetDocument document)
 {
     await using var stream = File.Create(path);
@@ -282,7 +336,9 @@ static OdsSpreadsheetDocument HostileFixture()
             {
                 var labels = new[] { "Code", "Name", "Marker", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Total", "Ratio" };
                 cells.Add(new OdsCell(StatementValue.FromText(labels[column - 1]),
-                    PresentationRole: StatementPresentationRole.ColumnHeader));
+                    PresentationRole: column == 5
+                        ? StatementPresentationRole.PeriodVersionWarning
+                        : StatementPresentationRole.ColumnHeader));
                 continue;
             }
 

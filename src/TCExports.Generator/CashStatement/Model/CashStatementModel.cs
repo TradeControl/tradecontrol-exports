@@ -120,6 +120,7 @@ public enum StatementPresentationRole
     DocumentTitle,
     Metadata,
     ColumnHeader,
+    PeriodVersionWarning,
     CurrentPeriod,
     AnnualPeriod,
     SectionHeader,
@@ -325,7 +326,9 @@ public sealed record StatementPeriod(
     string YearLabel,
     string CashStatus,
     DateOnly? StartOn,
-    bool IsActive);
+    bool IsActive,
+    string ApplicableCategoryVersionId = "",
+    bool DiffersFromSelectedVersion = false);
 
 public sealed record StatementPeriodGrid(ImmutableArray<StatementPeriod> Periods);
 

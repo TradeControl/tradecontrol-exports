@@ -15,6 +15,11 @@ public sealed record CategoryTreeVersionResolutionDto(
     CategoryTreeVersionDto ActiveVersion,
     CategoryTreeVersionDto? SelectedVersion);
 
+public sealed record CategoryTreeVersionIntervalDto(
+    string VersionId,
+    DateOnly EffectiveFromOn,
+    DateOnly? EffectiveToOn);
+
 /// <summary>
 /// A cash flow category descriptor used to group cash codes in the statement.
 /// </summary>
@@ -34,8 +39,6 @@ public sealed class FlowCategoryCashCodeDto
     public string CashCode { get; init; } = "";
     public string CashDescription { get; init; } = "";
 }
-
-public sealed record UnmappedCashCodeDto(string CashCode, string CashDescription);
 
 /// <summary>
 /// A category flagged as a total/summary for a given cash type.

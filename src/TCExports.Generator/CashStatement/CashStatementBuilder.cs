@@ -61,15 +61,6 @@ public sealed class CashStatementBuilder
         if (!categoryTreeResult.IsSuccess)
             return new(null, categoryTreeResult.Violations);
 
-        var projectionResult = await ValidateCategoryTreeProjectionEquivalenceAsync(
-            connectionString,
-            categoryTreeResult.Value!,
-            request,
-            timeout,
-            ct);
-        if (!projectionResult.IsDefaultOrEmpty)
-            return new(null, projectionResult);
-
         var active = await _repository.GetActivePeriodAsync(connectionString, timeout, ct);
         var years = await _repository.GetActiveYearsAsync(connectionString, timeout, ct);
         var months = await _repository.GetMonthsAsync(connectionString, timeout, ct);
@@ -79,15 +70,21 @@ public sealed class CashStatementBuilder
         if (!periodResult.IsSuccess)
             return new(null, periodResult.Violations);
 
-        var mappingResult = await ValidateCategoryTreeCoverageAsync(
+        var periodBoundaries = await _repository.GetStatementPeriodBoundariesAsync(
             connectionString,
-            selectedVersionId: categoryTreeResult.Value!.SelectedVersion.VersionId,
-            years,
-            request,
             timeout,
             ct);
-        if (!mappingResult.IsDefaultOrEmpty)
-            return new(null, mappingResult);
+        var versionTimeline = await _repository.GetCategoryTreeVersionTimelineAsync(
+            connectionString,
+            timeout,
+            ct);
+        var attributionResult = CashStatementPeriodVersionAttributor.Attribute(
+            periodResult.Value!,
+            periodBoundaries,
+            versionTimeline,
+            categoryTreeResult.Value!.SelectedVersion.VersionId);
+        if (!attributionResult.IsSuccess)
+            return new(null, attributionResult.Violations);
 
         var selectedVersionId = categoryTreeResult.Value!.SelectedVersion.VersionId;
         var sourceResult = await LoadFlowSourceAsync(
@@ -99,7 +96,7 @@ public sealed class CashStatementBuilder
         if (!sourceResult.IsSuccess)
             return new(null, sourceResult.Violations);
 
-        var periodGrid = periodResult.Value!;
+        var periodGrid = attributionResult.Value!;
         var buildViolations = ImmutableArray.CreateBuilder<StatementContractViolation>();
         var sections = BuildFlowSections(periodGrid, sourceResult.Value!, _text, buildViolations).ToBuilder();
 
@@ -165,6 +162,7 @@ public sealed class CashStatementBuilder
         {
             sheets.Add(await BuildReconciliationSheetAsync(
                 connectionString,
+                categoryTreeResult.Value,
                 sheets.Count,
                 timeout,
                 ct));
@@ -192,41 +190,6 @@ public sealed class CashStatementBuilder
         return evaluatedViolations.IsEmpty
             ? new(evaluated, ImmutableArray<StatementContractViolation>.Empty)
             : new(null, evaluatedViolations);
-    }
-
-    private async Task<ImmutableArray<StatementContractViolation>> ValidateCategoryTreeCoverageAsync(
-        string connectionString,
-        string selectedVersionId,
-        IReadOnlyList<ActiveYearDto> years,
-        CashStatementRequestV1 request,
-        int commandTimeoutSeconds,
-        CancellationToken ct)
-    {
-        if (years.Count == 0)
-            return ImmutableArray<StatementContractViolation>.Empty;
-
-        var missing = await _repository.GetUnmappedTransactionCashCodesAsync(
-            connectionString,
-            selectedVersionId,
-            years.Min(year => year.YearNumber),
-            years.Max(year => year.YearNumber),
-            request.IncludeOrderBook,
-            commandTimeoutSeconds,
-            ct);
-        if (missing.Count == 0)
-            return ImmutableArray<StatementContractViolation>.Empty;
-
-        const int displayLimit = 20;
-        var codes = string.Join(", ", missing
-            .Take(displayLimit)
-            .Select(item => $"{item.CashCode} ({item.CashDescription})"));
-        var suffix = missing.Count > displayLimit
-            ? $" and {missing.Count - displayLimit} more"
-            : string.Empty;
-        return ImmutableArray.Create(new StatementContractViolation(
-            "CATEGORY_VERSION_CASH_CODE_UNMAPPED",
-            "params.categoryVersionId",
-            $"Category Tree version '{selectedVersionId}' does not classify transaction-bearing Cash Codes in the statement horizon: {codes}{suffix}."));
     }
 
     private async Task<CashStatementContractResult<CashStatementCategoryTreeContext>>
@@ -302,46 +265,6 @@ public sealed class CashStatementBuilder
 
         static DateTimeOffset Utc(DateTime value) =>
             new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-    }
-
-    private async Task<ImmutableArray<StatementContractViolation>>
-        ValidateCategoryTreeProjectionEquivalenceAsync(
-            string connectionString,
-            CashStatementCategoryTreeContext categoryTree,
-            CashStatementRequestV1 request,
-            int commandTimeoutSeconds,
-            CancellationToken ct)
-    {
-        if (categoryTree.IsActiveSelection)
-            return ImmutableArray<StatementContractViolation>.Empty;
-
-        var mismatches = await _repository.GetCategoryTreeProjectionMismatchesAsync(
-            connectionString,
-            categoryTree.SelectedVersion.VersionId,
-            commandTimeoutSeconds,
-            ct);
-        var required = mismatches.Where(dependency => dependency switch
-        {
-            "VAT_ROOT" => request.IncludeActivePeriods
-                || request.IncludeVatDetails
-                || request.IncludeBalanceSheet
-                || request.IncludeReconciliation,
-            "BIZ_ROOT" => request.IncludeActivePeriods
-                || request.IncludeTaxAccruals
-                || request.IncludeBalanceSheet
-                || request.IncludeReconciliation,
-            "OPEN_PROJECT_POLARITY" => request.IncludeTaxAccruals,
-            "ASSET_ACCOUNT_POLARITY" => request.IncludeBalanceSheet
-                || request.IncludeReconciliation,
-            _ => true
-        }).ToArray();
-        if (required.Length == 0)
-            return ImmutableArray<StatementContractViolation>.Empty;
-
-        return ImmutableArray.Create(new StatementContractViolation(
-            "CATEGORY_VERSION_OPTIONAL_PROJECTION_MISMATCH",
-            "params.categoryVersionId",
-            $"Category Tree version '{categoryTree.SelectedVersion.VersionId}' differs from the active tree in reporting dependencies used by this request: {string.Join(", ", required)}."));
     }
 
     private async Task<CashStatementContractResult<FlowSource>> LoadFlowSourceAsync(
@@ -1334,16 +1257,23 @@ public sealed class CashStatementBuilder
 
     private async Task<StatementSheet> BuildReconciliationSheetAsync(
         string connectionString,
+        CashStatementCategoryTreeContext categoryTree,
         int presentationOrder,
         int commandTimeoutSeconds,
         CancellationToken ct)
     {
         const decimal tolerance = 0.10m;
         var sheetId = new StatementSheetId("reconciliation");
-        var sourceRows = await _repository.GetEquityReconciliationByYearAsync(
-            connectionString,
-            commandTimeoutSeconds,
-            ct);
+        var sourceRows = categoryTree.IsActiveSelection
+            ? await _repository.GetEquityReconciliationByYearAsync(
+                connectionString,
+                commandTimeoutSeconds,
+                ct)
+            : await _repository.GetEquityReconciliationByYearByVersionAsync(
+                connectionString,
+                categoryTree.SelectedVersion.VersionId,
+                commandTimeoutSeconds,
+                ct);
         var columns = ImmutableArray.Create(
             ReconciliationColumn("year", CashStatementText.Year, StatementColumnKind.Identifier, 0),
             ReconciliationColumn("description", CashStatementText.Description, StatementColumnKind.Label, 1),
