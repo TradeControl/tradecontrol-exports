@@ -18,6 +18,7 @@ public sealed record CashStatementRequestV1(
     string? CategoryVersionId = null)
 {
     public const int ContractVersion = 1;
+    public const int DefaultCommandTimeoutSeconds = 30;
 
     public int Version => ContractVersion;
 }

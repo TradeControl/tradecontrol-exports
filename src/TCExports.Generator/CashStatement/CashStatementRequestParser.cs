@@ -110,7 +110,7 @@ public static class CashStatementRequestParser
         ImmutableArray<StatementContractViolation>.Builder violations)
     {
         if (!values.TryGetValue("commandTimeout", out var raw) || string.IsNullOrWhiteSpace(raw))
-            return 30;
+            return CashStatementRequestV1.DefaultCommandTimeoutSeconds;
 
         if (int.TryParse(raw, out var timeout) && timeout is >= 1 and <= 600)
             return timeout;

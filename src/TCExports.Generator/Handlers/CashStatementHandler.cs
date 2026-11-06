@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using TCExports.Generator.CashStatement;
 using TCExports.Generator.CashStatement.Model;
 using TCExports.Generator.Contracts;
@@ -90,7 +91,7 @@ public sealed class CashStatementHandler : IDocumentHandler
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             return new ExportResult
             {
@@ -99,11 +100,18 @@ public sealed class CashStatementHandler : IDocumentHandler
                 Message = "Cash Statement generation failed.",
                 Details = new Dictionary<string, string[]>
                 {
-                    ["generation"] = new[] { "The generator stopped unexpectedly." }
+                    ["generation"] = new[] { FailureDiagnostic(exception) }
                 }
             };
         }
     }
+
+    private static string FailureDiagnostic(Exception exception) => exception switch
+    {
+        SqlException sqlException =>
+            $"SqlException {sqlException.Number}: {sqlException.Message}",
+        _ => $"{exception.GetType().Name}: The generator stopped unexpectedly."
+    };
 
     private static ExportResult ContractFailure(
         string code,
